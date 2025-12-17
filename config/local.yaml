@@ -32,7 +32,7 @@ chunking:
 
 # Indexing Agent settings
 indexing:
-  embedding_model: text-embedding-3-large
+  embedding_model: text-embedding-3-small # Falls back to ada-002 if not available
   embedding_provider: openai
   batch_size: 100
   max_retries: 3
