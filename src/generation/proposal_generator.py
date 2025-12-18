@@ -7,23 +7,74 @@ from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTempla
 from src.common.logger import get_logger
 
 
-PROPOSAL_PROMPT = """다음 RFP 문서를 분석하여 제안서를 작성하세요.
+PROPOSAL_PROMPT = """당신은 전문 제안서 작성 전문가입니다. 아래 제공된 RFP(제안요청서) 문서의 모든 정보를 철저히 분석하고, 그 내용을 바탕으로 발주 기관에 제출할 전문적인 사업 제안서를 작성하세요.
 
-RFP 내용:
+중요: RFP 문서에 명시된 구체적인 정보(사업명, 예산, 마감일, 요구사항, 기술 스펙 등)를 반드시 반영하여 작성하세요. 단순 요약이 아닌, 실제 제안서 형태로 작성하세요.
+
+=== RFP 문서 내용 ===
 {context}
+=== RFP 문서 내용 끝 ===
 
-다음 8개 섹션으로 제안서를 작성하세요:
+위 RFP 문서를 분석하여 다음 8개 섹션으로 구성된 전문 제안서를 작성하세요. 각 섹션은 최소 3-5문단으로 상세하게 작성하세요:
 
-1. 사업 이해 및 배경
-2. 제안 개요
-3. 기술 제안
-4. 사업 수행 계획
-5. 조직 및 인력 구성
-6. 예산 및 제안 금액
-7. 기대 효과 및 성과
-8. 차별화 포인트
+## 1. 사업 이해 및 배경
+- RFP 문서에 명시된 사업의 핵심 목적과 배경을 상세히 설명
+- 발주 기관이 추진하는 사업의 필요성과 중요성 분석
+- 사업 추진 배경 및 정책적 맥락 설명
+- 우리가 이 사업을 이해한 내용을 구체적으로 기술
 
-각 섹션을 2-3문단으로 작성하세요. RFP 요구사항을 반영하고 전문적으로 작성하세요.
+## 2. 제안 개요
+- 우리의 핵심 가치 제안 및 접근 철학
+- RFP 요구사항에 대한 우리의 해석과 접근 방식
+- 우리가 제공할 솔루션의 핵심 차별화 포인트
+- 사업 성공을 위한 우리의 전략적 관점
+
+## 3. 기술 제안
+- RFP에 명시된 기술 요구사항을 충족하는 시스템 아키텍처 제안
+- 핵심 기술 스택 및 플랫폼 구성 방안
+- 주요 기능 모듈 및 시스템 구성도
+- 기술적 우수성 및 혁신성 (성능, 보안, 확장성 등)
+- RFP에 명시된 기술 스펙을 반영한 구체적 기술 방안
+
+## 4. 사업 수행 계획
+- RFP에 명시된 일정을 반영한 상세 프로젝트 일정표
+- 단계별 수행 계획 및 마일스톤
+- 각 단계별 주요 산출물 및 성과물
+- 리스크 관리 방안 및 대응 전략
+- 품질 관리 체계
+
+## 5. 조직 및 인력 구성
+- 프로젝트 조직도 및 역할 분담
+- 핵심 인력 구성 및 역할 (PM, 기술책임자, 개발자 등)
+- 각 인력의 전문성 및 경험
+- 발주 기관과의 협업 체계
+
+## 6. 예산 및 제안 금액
+- RFP에 명시된 예산 범위를 고려한 제안 금액
+- 예산 구성 내역 (인건비, 개발비, 운영비 등)
+- 가격 경쟁력 및 가치 제안
+- 비용 대비 효과 분석
+
+## 7. 기대 효과 및 성과
+- RFP 목표 달성을 위한 구체적 성과 지표
+- 정량적 성과 (처리 속도, 사용자 수, 시스템 안정성 등)
+- 정성적 성과 (사용자 만족도, 업무 효율성 향상 등)
+- ROI 분석 및 장기적 가치
+
+## 8. 차별화 포인트
+- 경쟁사 대비 우리의 핵심 경쟁 우위
+- 우리의 기술력, 특허, 노하우
+- 유사 사업 수행 경험 및 성공 사례
+- 발주 기관에 제공할 추가 가치
+
+작성 지침:
+1. RFP 문서에 명시된 모든 구체적 정보(사업명, 예산, 일정, 요구사항 등)를 반드시 반영하세요
+2. 각 섹션을 최소 3-5문단으로 상세하게 작성하세요
+3. 전문적이고 설득력 있는 문체로 작성하세요
+4. 구체적인 수치, 일정, 기술 명세를 포함하세요
+5. 발주 기관의 요구사항을 정확히 이해하고 충족하는 내용으로 작성하세요
+
+지금부터 제안서를 작성하세요:
 """
 
 
@@ -46,8 +97,10 @@ class ProposalGenerator:
         
         # Create prompt template
         system_template = SystemMessagePromptTemplate.from_template(
-            "당신은 전문 제안서 작성 전문가입니다. RFP 문서를 분석하여 발주 기관의 요구사항을 완벽히 이해하고, "
-            "경쟁력 있고 설득력 있는 제안서를 작성하세요. 기술적 정확성과 비즈니스 가치를 균형있게 제시하세요."
+            "당신은 정부 및 공공기관 사업 제안서 작성 전문가입니다. RFP 문서의 모든 정보를 철저히 분석하고, "
+            "그 내용을 바탕으로 발주 기관에 제출할 전문적이고 구체적인 사업 제안서를 작성하세요. "
+            "RFP에 명시된 사업명, 예산, 일정, 기술 요구사항 등 모든 구체적 정보를 반드시 반영하여 작성하세요. "
+            "단순 요약이 아닌, 실제 제안서 형태로 최소 2000자 이상의 상세한 내용을 작성하세요."
         )
         human_template = HumanMessagePromptTemplate.from_template(PROPOSAL_PROMPT)
         
@@ -246,14 +299,44 @@ class ProposalGenerator:
         }
     
     def _build_context(self, chunks: List[Dict]) -> str:
-        """Build context from chunks."""
+        """Build context from chunks with metadata."""
         context_parts = []
+        
+        # Extract metadata from first chunk (usually contains document-level info)
+        first_chunk_meta = chunks[0].get('metadata', {}) if chunks else {}
+        doc_meta_info = []
+        
+        if first_chunk_meta.get('사업명'):
+            doc_meta_info.append(f"사업명: {first_chunk_meta['사업명']}")
+        if first_chunk_meta.get('공고 번호'):
+            doc_meta_info.append(f"공고 번호: {first_chunk_meta['공고 번호']}")
+        if first_chunk_meta.get('사업 금액'):
+            doc_meta_info.append(f"사업 예산: {first_chunk_meta['사업 금액']:,}원")
+        if first_chunk_meta.get('발주 기관'):
+            doc_meta_info.append(f"발주 기관: {first_chunk_meta['발주 기관']}")
+        if first_chunk_meta.get('입찰 참여 마감일'):
+            doc_meta_info.append(f"입찰 참여 마감일: {first_chunk_meta['입찰 참여 마감일']}")
+        if first_chunk_meta.get('사업 요약'):
+            doc_meta_info.append(f"사업 요약: {first_chunk_meta['사업 요약']}")
+        
+        if doc_meta_info:
+            context_parts.append("=== RFP 문서 기본 정보 ===\n" + "\n".join(doc_meta_info) + "\n")
+        
+        # Add chunks with more context
         for i, chunk in enumerate(chunks, 1):
             chunk_text = chunk.get('chunk_text', '')
-            # Limit each chunk to 500 chars to avoid token limits
-            if len(chunk_text) > 500:
-                chunk_text = chunk_text[:500] + "..."
-            context_parts.append(f"[{i}] {chunk_text}")
+            metadata = chunk.get('metadata', {})
+            
+            # Include more text (up to 800 chars) for better context
+            if len(chunk_text) > 800:
+                chunk_text = chunk_text[:800] + "..."
+            
+            section_info = ""
+            if metadata.get('section_name'):
+                section_info = f" [섹션: {metadata['section_name']}]"
+            
+            context_parts.append(f"[문서 부분 {i}{section_info}]\n{chunk_text}")
+        
         return "\n\n".join(context_parts)
     
     def _format_company_info(self, company_info: Dict) -> str:
