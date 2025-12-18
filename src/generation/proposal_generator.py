@@ -104,9 +104,19 @@ class ProposalGenerator:
         
         try:
             response = self.llm.invoke(messages)
-            proposal_text = response.content if hasattr(response, 'content') else str(response)
+            
+            # Debug: Log full response object
+            self.logger.debug(f"Response type: {type(response)}")
+            self.logger.debug(f"Response repr: {repr(response)}")
+            
+            # Extract content using helper method
+            proposal_text = self._extract_response_content(response)
             
             self.logger.info(f"LLM response received, length: {len(proposal_text) if proposal_text else 0} chars")
+            if proposal_text and len(proposal_text) > 0:
+                self.logger.debug(f"Response preview (first 200 chars): {proposal_text[:200]}")
+            else:
+                self.logger.error(f"Empty response! Full response object: {response}")
             
             # Check if response is empty - try with increased max_tokens
             if not proposal_text or not proposal_text.strip():
@@ -120,7 +130,7 @@ class ProposalGenerator:
             if "model_not_found" in error_str or "403" in error_str or "does not have access" in error_str:
                 self.logger.warning(f"LLM model access error: {e}. Trying fallback models...")
                 response = self._try_fallback_llm(messages, error_str)
-                proposal_text = response.content if hasattr(response, 'content') else str(response)
+                proposal_text = self._extract_response_content(response)
             else:
                 self.logger.error(f"Failed to generate proposal: {e}", exc_info=True)
                 raise
@@ -196,9 +206,15 @@ class ProposalGenerator:
         
         try:
             response = self.llm.invoke(messages)
-            proposal_text = response.content if hasattr(response, 'content') else str(response)
+            
+            # Extract content using helper method
+            proposal_text = self._extract_response_content(response)
             
             self.logger.info(f"LLM response received, length: {len(proposal_text) if proposal_text else 0} chars")
+            if proposal_text and len(proposal_text) > 0:
+                self.logger.debug(f"Response preview (first 200 chars): {proposal_text[:200]}")
+            else:
+                self.logger.error(f"Empty response! Full response object: {response}")
             
             # Check if response is empty - try with increased max_tokens
             if not proposal_text or not proposal_text.strip():
@@ -207,11 +223,12 @@ class ProposalGenerator:
                 
         except Exception as e:
             error_str = str(e)
+            self.logger.error(f"LLM invoke failed: {error_str}")
             # Check if it's a model access error
             if "model_not_found" in error_str or "403" in error_str or "does not have access" in error_str:
                 self.logger.warning(f"LLM model access error: {e}. Trying fallback models...")
                 response = self._try_fallback_llm(messages, error_str)
-                proposal_text = response.content if hasattr(response, 'content') else str(response)
+                proposal_text = self._extract_response_content(response)
             else:
                 self.logger.error(f"Failed to generate proposal: {e}", exc_info=True)
                 raise
@@ -256,6 +273,38 @@ class ProposalGenerator:
         
         return "\n".join(parts)
     
+    def _extract_response_content(self, response):
+        """Extract content from LLM response object."""
+        proposal_text = None
+        
+        # Try multiple methods to extract content
+        if hasattr(response, 'content'):
+            proposal_text = response.content
+        elif hasattr(response, 'text'):
+            proposal_text = response.text
+        elif hasattr(response, 'message'):
+            if hasattr(response.message, 'content'):
+                proposal_text = response.message.content
+        else:
+            proposal_text = str(response)
+        
+        # If still None or empty, try deeper inspection
+        if not proposal_text:
+            try:
+                # Try accessing as AIMessage or similar
+                if hasattr(response, '__dict__'):
+                    for key, val in response.__dict__.items():
+                        if isinstance(val, str) and val:
+                            proposal_text = val
+                            break
+                        elif hasattr(val, 'content'):
+                            proposal_text = val.content
+                            break
+            except Exception as e:
+                self.logger.debug(f"Error in deep inspection: {e}")
+        
+        return proposal_text if proposal_text else ""
+    
     def _retry_with_increased_tokens(self, messages):
         """Retry with increased max_tokens if response was empty."""
         from langchain_openai import ChatOpenAI
@@ -293,17 +342,8 @@ class ProposalGenerator:
             
             response = retry_llm.invoke(messages)
             
-            # Try multiple ways to get content
-            proposal_text = None
-            if hasattr(response, 'content'):
-                proposal_text = response.content
-            elif hasattr(response, 'text'):
-                proposal_text = response.text
-            elif hasattr(response, 'message'):
-                if hasattr(response.message, 'content'):
-                    proposal_text = response.message.content
-            else:
-                proposal_text = str(response)
+            # Extract content - same logic as main call
+            proposal_text = self._extract_response_content(response)
             
             if proposal_text and proposal_text.strip():
                 # Update self.llm for future calls
@@ -361,17 +401,8 @@ class ProposalGenerator:
                 
                 response = fallback_llm.invoke(messages)
                 
-                # Try multiple ways to get content
-                proposal_text = None
-                if hasattr(response, 'content'):
-                    proposal_text = response.content
-                elif hasattr(response, 'text'):
-                    proposal_text = response.text
-                elif hasattr(response, 'message'):
-                    if hasattr(response.message, 'content'):
-                        proposal_text = response.message.content
-                else:
-                    proposal_text = str(response)
+                # Extract content - same logic as main call
+                proposal_text = self._extract_response_content(response)
                 
                 if proposal_text and proposal_text.strip():
                     # Update self.llm for future calls
