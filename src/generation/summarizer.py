@@ -2,7 +2,7 @@
 
 from typing import Dict, List
 
-from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from src.common.logger import get_logger
 
 
