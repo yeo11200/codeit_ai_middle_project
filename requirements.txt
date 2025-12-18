@@ -29,3 +29,8 @@ nltk
 
 # Environment variables
 python-dotenv
+
+# API
+fastapi
+uvicorn[standard]
+pydantic

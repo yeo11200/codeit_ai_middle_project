@@ -9,7 +9,8 @@
 
 **실행 가이드**: [EXECUTION_GUIDE.md](./EXECUTION_GUIDE.md) 참조  
 **테스트 가이드**: [TESTING_GUIDE.md](./TESTING_GUIDE.md) 참조  
-**환경변수 설정**: [ENV_SETUP.md](./ENV_SETUP.md) 참조
+**환경변수 설정**: [ENV_SETUP.md](./ENV_SETUP.md) 참조  
+**API 가이드**: [API_GUIDE.md](./API_GUIDE.md) 참조
 
 ### 기본 실행 순서
 
