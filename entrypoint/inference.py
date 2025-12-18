@@ -64,7 +64,7 @@ def main():
         from src.indexing.embedder import Embedder
         from src.retrieval.retrieval_agent import RetrievalAgent
         from src.generation.generation_agent import GenerationAgent
-        from langchain_openai import ChatOpenAI
+        from src.common.llm_utils import create_llm_with_fallback
         
         # Vector store and embedder
         vector_store = VectorStore(config["indexing"])
@@ -73,9 +73,9 @@ def main():
         # Retrieval agent
         retrieval_agent = RetrievalAgent(config["retrieval"], vector_store, embedder)
         
-        # LLM
-        llm = ChatOpenAI(
-            model=config["generation"]["llm"]["model"],
+        # LLM with fallback
+        llm = create_llm_with_fallback(
+            primary_model=config["generation"]["llm"]["model"],
             temperature=config["generation"]["llm"]["temperature"],
             max_tokens=config["generation"]["llm"]["max_tokens"],
         )

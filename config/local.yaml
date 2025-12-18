@@ -1,6 +1,6 @@
 llm:
   provider: openai
-  model: gpt-4o-mini
+  model: gpt-3.5-turbo # Falls back to gpt-4 if not available
   temperature: 0.2
   max_tokens: 2000
 
