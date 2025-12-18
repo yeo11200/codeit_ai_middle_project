@@ -153,9 +153,19 @@ class ProposalGenerator:
                 self.logger.error(f"Empty response! Full response object: {response}")
             
             # Check if response is too short - retry with increased max_tokens
-            if not proposal_text or len(proposal_text.strip()) < 500:
+            # Lower threshold to 200 chars to be more lenient
+            if not proposal_text or len(proposal_text.strip()) < 200:
                 self.logger.warning(f"LLM returned very short proposal ({len(proposal_text) if proposal_text else 0} chars). Retrying with increased max_tokens...")
-                proposal_text = self._retry_with_increased_tokens(messages)
+                retry_result = self._retry_with_increased_tokens(messages)
+                # If retry returns error message, use original response if it exists
+                if retry_result and len(retry_result) > 100 and "모든 LLM 모델" in retry_result:
+                    if proposal_text and len(proposal_text.strip()) > 0:
+                        self.logger.warning(f"Retry failed, using original response ({len(proposal_text)} chars)")
+                        proposal_text = proposal_text
+                    else:
+                        proposal_text = retry_result
+                else:
+                    proposal_text = retry_result
                 
         except Exception as e:
             error_str = str(e)
@@ -169,20 +179,16 @@ class ProposalGenerator:
                 self.logger.error(f"Failed to generate proposal: {e}", exc_info=True)
                 raise
         
-        # Final check - if still too short, return error message
-        if not proposal_text or len(proposal_text.strip()) < 500:
-            self.logger.error(f"Proposal generation returned too short text ({len(proposal_text) if proposal_text else 0} chars) after all attempts")
-            proposal_text = f"""제안서 생성 중 오류가 발생했습니다. LLM이 충분한 응답을 생성하지 못했습니다.
+        # Final check - accept any response, even if short
+        if not proposal_text or not proposal_text.strip():
+            self.logger.error(f"Proposal generation returned empty text after all attempts")
+            proposal_text = "제안서 생성에 실패했습니다. 서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."
+        elif len(proposal_text.strip()) < 200:
+            self.logger.warning(f"Proposal is very short ({len(proposal_text)} chars) but returning it anyway")
+            # Add a note to the proposal
+            proposal_text = f"""{proposal_text}
 
-생성된 응답 길이: {len(proposal_text) if proposal_text else 0}자
-요구 사항: 최소 2000자 이상
-
-가능한 원인:
-1. LLM 모델 접근 권한 문제
-2. 토큰 제한 초과
-3. 컨텍스트가 너무 길어서 응답 생성 실패
-
-서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."""
+[주의: 이 제안서는 매우 짧게 생성되었습니다. LLM 모델 설정을 확인하거나 다른 모델을 시도해주세요.]"""
         
         # Extract source document IDs
         source_doc_ids = list(set([
@@ -277,20 +283,16 @@ class ProposalGenerator:
                 self.logger.error(f"Failed to generate proposal: {e}", exc_info=True)
                 raise
         
-        # Final check - if still too short, return error message
-        if not proposal_text or len(proposal_text.strip()) < 500:
-            self.logger.error(f"Proposal generation returned too short text ({len(proposal_text) if proposal_text else 0} chars) after all attempts")
-            proposal_text = f"""제안서 생성 중 오류가 발생했습니다. LLM이 충분한 응답을 생성하지 못했습니다.
+        # Final check - accept any response, even if short
+        if not proposal_text or not proposal_text.strip():
+            self.logger.error(f"Proposal generation returned empty text after all attempts")
+            proposal_text = "제안서 생성에 실패했습니다. 서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."
+        elif len(proposal_text.strip()) < 200:
+            self.logger.warning(f"Proposal is very short ({len(proposal_text)} chars) but returning it anyway")
+            # Add a note to the proposal
+            proposal_text = f"""{proposal_text}
 
-생성된 응답 길이: {len(proposal_text) if proposal_text else 0}자
-요구 사항: 최소 2000자 이상
-
-가능한 원인:
-1. LLM 모델 접근 권한 문제
-2. 토큰 제한 초과
-3. 컨텍스트가 너무 길어서 응답 생성 실패
-
-서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."""
+[주의: 이 제안서는 매우 짧게 생성되었습니다. LLM 모델 설정을 확인하거나 다른 모델을 시도해주세요.]"""
         
         return {
             "proposal": proposal_text,
@@ -445,7 +447,13 @@ class ProposalGenerator:
             else:
                 # Still too short, try fallback models
                 self.logger.warning(f"Still too short after increasing tokens ({len(proposal_text) if proposal_text else 0} chars), trying fallback models...")
-                return self._try_fallback_llm(messages, "Short response after token increase")
+                fallback_result = self._try_fallback_llm(messages, "Short response after token increase")
+                # If fallback also returns error message, return the original short response
+                if fallback_result and len(fallback_result) > 100 and "모든 LLM 모델" in fallback_result:
+                    # Fallback failed, return original short response
+                    self.logger.warning(f"Fallback also failed, returning original short response ({len(proposal_text)} chars)")
+                    return proposal_text if proposal_text else "제안서 생성에 실패했습니다."
+                return fallback_result
                 
         except Exception as e:
             self.logger.warning(f"Retry with increased tokens failed: {e}, trying fallback models...")
@@ -496,10 +504,13 @@ class ProposalGenerator:
                 # Extract content - same logic as main call
                 proposal_text = self._extract_response_content(response)
                 
+                self.logger.info(f"Fallback model '{fallback_model}' response length: {len(proposal_text) if proposal_text else 0} chars")
+                
                 if proposal_text and proposal_text.strip():
+                    # Accept even short responses from fallback models
                     # Update self.llm for future calls
                     self.llm = fallback_llm
-                    self.logger.info(f"Successfully switched to fallback model: {fallback_model}")
+                    self.logger.info(f"Successfully switched to fallback model: {fallback_model} (response: {len(proposal_text)} chars)")
                     return proposal_text
                 else:
                     self.logger.warning(f"Fallback model '{fallback_model}' returned empty response")
@@ -513,10 +524,13 @@ class ProposalGenerator:
                     self.logger.debug(f"Fallback model '{fallback_model}' failed: {e}")
                 continue
         
-        # If all fallback models failed
-        raise ValueError(
-            f"All LLM models failed. Original error: {original_error}. "
-            f"Tried fallback models: {LLM_FALLBACK_MODELS}. "
-            "Please check your OpenAI API access or update config/local.yaml with an available model."
+        # If all fallback models failed, return a helpful error message instead of raising
+        error_msg = (
+            f"모든 LLM 모델이 짧은 응답을 반환했습니다. "
+            f"원본 에러: {original_error}. "
+            f"시도한 모델: {LLM_FALLBACK_MODELS}. "
+            "config/local.yaml에서 사용 가능한 다른 모델로 변경해주세요."
         )
+        self.logger.error(error_msg)
+        return error_msg
 
