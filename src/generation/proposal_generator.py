@@ -116,12 +116,17 @@ class ProposalGenerator:
             }
         
         # Build context from retrieved chunks
-        context = self._build_context(retrieval_results["results"])
+        # Limit context length to avoid token limits
+        max_context_chunks = min(top_k, 20)  # Limit to 20 chunks max
+        chunks_to_use = retrieval_results["results"][:max_context_chunks]
+        context = self._build_context(chunks_to_use)
         
         # Add company info to context if provided
         if company_info:
             company_context = self._format_company_info(company_info)
             context = f"{company_context}\n\n{context}"
+        
+        self.logger.info(f"Context built: {len(chunks_to_use)} chunks, {len(context)} chars")
         
         # Generate proposal
         messages = self.prompt.format_messages(context=context)
@@ -134,11 +139,10 @@ class ProposalGenerator:
             
             self.logger.info(f"LLM response received, length: {len(proposal_text) if proposal_text else 0} chars")
             
-            # Check if response is empty
+            # Check if response is empty - try with increased max_tokens
             if not proposal_text or not proposal_text.strip():
-                self.logger.warning("LLM returned empty proposal. Trying fallback...")
-                response = self._try_fallback_llm(messages, "Empty response")
-                proposal_text = response.content if hasattr(response, 'content') else str(response)
+                self.logger.warning("LLM returned empty proposal. Retrying with increased max_tokens...")
+                proposal_text = self._retry_with_increased_tokens(messages)
                 
         except Exception as e:
             error_str = str(e)
@@ -206,12 +210,17 @@ class ProposalGenerator:
             }
         
         # Build context
-        context = self._build_context(doc_chunks)
+        # Limit context length to avoid token limits
+        max_context_chunks = min(top_k, 20)  # Limit to 20 chunks max
+        chunks_to_use = doc_chunks[:max_context_chunks]
+        context = self._build_context(chunks_to_use)
         
         # Add company info if provided
         if company_info:
             company_context = self._format_company_info(company_info)
             context = f"{company_context}\n\n{context}"
+        
+        self.logger.info(f"Context built: {len(chunks_to_use)} chunks, {len(context)} chars")
         
         # Generate proposal
         messages = self.prompt.format_messages(context=context)
@@ -220,11 +229,12 @@ class ProposalGenerator:
             response = self.llm.invoke(messages)
             proposal_text = response.content if hasattr(response, 'content') else str(response)
             
-            # Check if response is empty
+            self.logger.info(f"LLM response received, length: {len(proposal_text) if proposal_text else 0} chars")
+            
+            # Check if response is empty - try with increased max_tokens
             if not proposal_text or not proposal_text.strip():
-                self.logger.warning("LLM returned empty proposal. Trying fallback...")
-                response = self._try_fallback_llm(messages, "Empty response")
-                proposal_text = response.content if hasattr(response, 'content') else str(response)
+                self.logger.warning("LLM returned empty proposal. Retrying with increased max_tokens...")
+                proposal_text = self._retry_with_increased_tokens(messages)
                 
         except Exception as e:
             error_str = str(e)
@@ -280,6 +290,58 @@ class ProposalGenerator:
         
         return "\n".join(parts)
     
+    def _retry_with_increased_tokens(self, messages):
+        """Retry with increased max_tokens if response was empty."""
+        from langchain_openai import ChatOpenAI
+        import os
+        
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not found")
+        
+        # Get current LLM config
+        try:
+            current_model = self.llm.model_name
+        except:
+            try:
+                current_model = str(self.llm.model)
+            except:
+                current_model = "unknown"
+        
+        try:
+            temperature = self.llm.temperature
+        except:
+            temperature = 0.2
+        
+        # Try with increased max_tokens (proposals need more tokens)
+        increased_tokens = 4000
+        
+        try:
+            self.logger.info(f"Retrying with max_tokens={increased_tokens}")
+            retry_llm = ChatOpenAI(
+                model=current_model,
+                temperature=temperature,
+                max_tokens=increased_tokens,
+                api_key=api_key
+            )
+            
+            response = retry_llm.invoke(messages)
+            proposal_text = response.content if hasattr(response, 'content') else str(response)
+            
+            if proposal_text and proposal_text.strip():
+                # Update self.llm for future calls
+                self.llm = retry_llm
+                self.logger.info(f"Successfully generated proposal with increased max_tokens")
+                return proposal_text
+            else:
+                # Still empty, try fallback models
+                self.logger.warning("Still empty after increasing tokens, trying fallback models...")
+                return self._try_fallback_llm(messages, "Empty response after token increase")
+                
+        except Exception as e:
+            self.logger.warning(f"Retry with increased tokens failed: {e}, trying fallback models...")
+            return self._try_fallback_llm(messages, str(e))
+    
     def _try_fallback_llm(self, messages, original_error: str):
         """Try fallback LLM models if primary model fails."""
         from src.common.llm_utils import LLM_FALLBACK_MODELS
@@ -304,17 +366,15 @@ class ProposalGenerator:
         except:
             temperature = 0.2
         
-        try:
-            max_tokens = self.llm.max_tokens
-        except:
-            max_tokens = 4000  # Longer for proposals
+        # Use increased tokens for proposals
+        max_tokens = 4000
         
         for fallback_model in LLM_FALLBACK_MODELS:
             if fallback_model == current_model:
                 continue  # Skip if already tried
             
             try:
-                self.logger.info(f"Trying fallback LLM model: {fallback_model}")
+                self.logger.info(f"Trying fallback LLM model: {fallback_model} with max_tokens={max_tokens}")
                 fallback_llm = ChatOpenAI(
                     model=fallback_model,
                     temperature=temperature,
@@ -323,12 +383,16 @@ class ProposalGenerator:
                 )
                 
                 response = fallback_llm.invoke(messages)
+                proposal_text = response.content if hasattr(response, 'content') else str(response)
                 
-                # Update self.llm for future calls
-                self.llm = fallback_llm
-                self.logger.info(f"Successfully switched to fallback model: {fallback_model}")
-                
-                return response
+                if proposal_text and proposal_text.strip():
+                    # Update self.llm for future calls
+                    self.llm = fallback_llm
+                    self.logger.info(f"Successfully switched to fallback model: {fallback_model}")
+                    return proposal_text
+                else:
+                    self.logger.warning(f"Fallback model '{fallback_model}' returned empty response")
+                    continue
                 
             except Exception as e:
                 error_str = str(e)
