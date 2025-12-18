@@ -7,54 +7,23 @@ from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTempla
 from src.common.logger import get_logger
 
 
-PROPOSAL_PROMPT = """다음은 RFP(제안요청서) 문서의 내용입니다. 이 문서를 분석하여 전문적인 제안서를 작성하세요.
+PROPOSAL_PROMPT = """다음 RFP 문서를 분석하여 제안서를 작성하세요.
 
-RFP 문서 내용:
+RFP 내용:
 {context}
 
-제안서는 다음 구조로 작성하세요:
+다음 8개 섹션으로 제안서를 작성하세요:
 
-## 1. 사업 이해 및 배경
-- RFP의 핵심 목적과 배경 설명
-- 발주 기관의 요구사항 분석
-- 사업의 중요성 및 필요성
+1. 사업 이해 및 배경
+2. 제안 개요
+3. 기술 제안
+4. 사업 수행 계획
+5. 조직 및 인력 구성
+6. 예산 및 제안 금액
+7. 기대 효과 및 성과
+8. 차별화 포인트
 
-## 2. 제안 개요
-- 제안의 핵심 가치 제안
-- 우리의 접근 방식 및 차별화 포인트
-- 기대 효과
-
-## 3. 기술 제안
-- 시스템 아키텍처 및 기술 스택
-- 핵심 기능 및 모듈
-- 기술적 우수성 및 혁신성
-
-## 4. 사업 수행 계획
-- 프로젝트 일정 및 마일스톤
-- 단계별 수행 계획
-- 리스크 관리 방안
-
-## 5. 조직 및 인력 구성
-- 프로젝트 조직도
-- 핵심 인력 및 역할
-- 경험 및 역량
-
-## 6. 예산 및 제안 금액
-- 예산 구성 내역
-- 가격 경쟁력
-- 가치 대비 비용
-
-## 7. 기대 효과 및 성과
-- 정량적/정성적 성과 지표
-- ROI 분석
-- 지속 가능성
-
-## 8. 차별화 포인트
-- 경쟁사 대비 우위
-- 특허/기술력
-- 참여 경험 및 실적
-
-위 구조에 따라 전문적이고 설득력 있는 제안서를 작성하세요. RFP의 모든 요구사항을 충족하면서도 우리의 강점을 부각시키세요.
+각 섹션을 2-3문단으로 작성하세요. RFP 요구사항을 반영하고 전문적으로 작성하세요.
 """
 
 
@@ -116,8 +85,8 @@ class ProposalGenerator:
             }
         
         # Build context from retrieved chunks
-        # Limit context length to avoid token limits
-        max_context_chunks = min(top_k, 20)  # Limit to 20 chunks max
+        # Limit context length to avoid token limits (reduce to 10 chunks for proposals)
+        max_context_chunks = min(top_k, 10)  # Limit to 10 chunks for proposals
         chunks_to_use = retrieval_results["results"][:max_context_chunks]
         context = self._build_context(chunks_to_use)
         
@@ -210,8 +179,8 @@ class ProposalGenerator:
             }
         
         # Build context
-        # Limit context length to avoid token limits
-        max_context_chunks = min(top_k, 20)  # Limit to 20 chunks max
+        # Limit context length to avoid token limits (reduce to 10 chunks for proposals)
+        max_context_chunks = min(top_k, 10)  # Limit to 10 chunks for proposals
         chunks_to_use = doc_chunks[:max_context_chunks]
         context = self._build_context(chunks_to_use)
         
@@ -263,15 +232,12 @@ class ProposalGenerator:
         """Build context from chunks."""
         context_parts = []
         for i, chunk in enumerate(chunks, 1):
-            metadata = chunk.get("metadata", {})
-            doc_id = metadata.get("doc_id", "unknown")
-            business_name = metadata.get("사업명", metadata.get("business_name", ""))
-            
-            context_parts.append(
-                f"[문서 {i}] (문서 ID: {doc_id}, 사업명: {business_name})\n"
-                f"{chunk.get('chunk_text', '')}"
-            )
-        return "\n\n" + "="*80 + "\n\n".join(context_parts)
+            chunk_text = chunk.get('chunk_text', '')
+            # Limit each chunk to 500 chars to avoid token limits
+            if len(chunk_text) > 500:
+                chunk_text = chunk_text[:500] + "..."
+            context_parts.append(f"[{i}] {chunk_text}")
+        return "\n\n".join(context_parts)
     
     def _format_company_info(self, company_info: Dict) -> str:
         """Format company information for context."""
@@ -326,7 +292,18 @@ class ProposalGenerator:
             )
             
             response = retry_llm.invoke(messages)
-            proposal_text = response.content if hasattr(response, 'content') else str(response)
+            
+            # Try multiple ways to get content
+            proposal_text = None
+            if hasattr(response, 'content'):
+                proposal_text = response.content
+            elif hasattr(response, 'text'):
+                proposal_text = response.text
+            elif hasattr(response, 'message'):
+                if hasattr(response.message, 'content'):
+                    proposal_text = response.message.content
+            else:
+                proposal_text = str(response)
             
             if proposal_text and proposal_text.strip():
                 # Update self.llm for future calls
@@ -383,7 +360,18 @@ class ProposalGenerator:
                 )
                 
                 response = fallback_llm.invoke(messages)
-                proposal_text = response.content if hasattr(response, 'content') else str(response)
+                
+                # Try multiple ways to get content
+                proposal_text = None
+                if hasattr(response, 'content'):
+                    proposal_text = response.content
+                elif hasattr(response, 'text'):
+                    proposal_text = response.text
+                elif hasattr(response, 'message'):
+                    if hasattr(response.message, 'content'):
+                        proposal_text = response.message.content
+                else:
+                    proposal_text = str(response)
                 
                 if proposal_text and proposal_text.strip():
                     # Update self.llm for future calls
