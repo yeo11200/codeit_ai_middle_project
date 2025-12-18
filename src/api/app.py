@@ -140,12 +140,14 @@ async def startup_event():
     # Initialize retrieval agent
     retrieval_agent = RetrievalAgent(config["retrieval"], vector_store, embedder)
     
-    # Initialize LLM
+    # Initialize LLM with increased max_tokens for proposals
+    llm_max_tokens = max(config["generation"]["llm"]["max_tokens"], 4000)  # At least 4000 for proposals
     llm = create_llm_with_fallback(
         primary_model=config["generation"]["llm"]["model"],
         temperature=config["generation"]["llm"]["temperature"],
-        max_tokens=config["generation"]["llm"]["max_tokens"],
+        max_tokens=llm_max_tokens,
     )
+    logger.info(f"LLM initialized with max_tokens={llm_max_tokens}")
     
     # Initialize generation agent
     generation_agent = GenerationAgent(config["generation"], llm, retrieval_agent)

@@ -73,8 +73,11 @@ PROPOSAL_PROMPT = """당신은 전문 제안서 작성 전문가입니다. 아�
 3. 전문적이고 설득력 있는 문체로 작성하세요
 4. 구체적인 수치, 일정, 기술 명세를 포함하세요
 5. 발주 기관의 요구사항을 정확히 이해하고 충족하는 내용으로 작성하세요
+6. **반드시 전체 제안서를 최소 3000자 이상 작성하세요. 짧은 응답은 절대 금지입니다.**
 
-지금부터 제안서를 작성하세요:
+**중요: 지금부터 위의 8개 섹션을 모두 포함하여 전문적인 제안서를 작성하세요. 각 섹션마다 구체적인 내용을 상세히 작성하세요. 짧은 응답이나 요약이 아닌, 실제 제안서 문서처럼 작성하세요.**
+
+제안서 작성 시작:
 """
 
 
@@ -100,7 +103,8 @@ class ProposalGenerator:
             "당신은 정부 및 공공기관 사업 제안서 작성 전문가입니다. RFP 문서의 모든 정보를 철저히 분석하고, "
             "그 내용을 바탕으로 발주 기관에 제출할 전문적이고 구체적인 사업 제안서를 작성하세요. "
             "RFP에 명시된 사업명, 예산, 일정, 기술 요구사항 등 모든 구체적 정보를 반드시 반영하여 작성하세요. "
-            "단순 요약이 아닌, 실제 제안서 형태로 최소 2000자 이상의 상세한 내용을 작성하세요."
+            "단순 요약이 아닌, 실제 제안서 형태로 최소 3000자 이상의 상세한 내용을 작성하세요. "
+            "짧은 응답은 절대 금지입니다. 반드시 8개 섹션을 모두 포함하여 완전한 제안서를 작성하세요."
         )
         human_template = HumanMessagePromptTemplate.from_template(PROPOSAL_PROMPT)
         
@@ -154,26 +158,44 @@ class ProposalGenerator:
         messages = self.prompt.format_messages(context=context)
         
         self.logger.info(f"Generating proposal for query: {query}, context length: {len(context)} chars")
+        self.logger.info(f"LLM model: {self.llm.model_name if hasattr(self.llm, 'model_name') else 'unknown'}")
+        self.logger.info(f"LLM max_tokens: {self.llm.max_tokens if hasattr(self.llm, 'max_tokens') else 'unknown'}")
         
         try:
+            # Ensure max_tokens is set correctly
+            if hasattr(self.llm, 'max_tokens') and self.llm.max_tokens < 3000:
+                self.logger.warning(f"LLM max_tokens ({self.llm.max_tokens}) is too low for proposals. Using 4000.")
+                # Create new LLM with higher max_tokens
+                from langchain_openai import ChatOpenAI
+                import os
+                api_key = os.getenv("OPENAI_API_KEY")
+                self.llm = ChatOpenAI(
+                    model=self.llm.model_name if hasattr(self.llm, 'model_name') else str(self.llm.model),
+                    temperature=self.llm.temperature if hasattr(self.llm, 'temperature') else 0.2,
+                    max_tokens=4000,
+                    api_key=api_key
+                )
+            
             response = self.llm.invoke(messages)
             
             # Debug: Log full response object
             self.logger.debug(f"Response type: {type(response)}")
-            self.logger.debug(f"Response repr: {repr(response)}")
+            self.logger.debug(f"Response repr: {repr(response)[:500]}")
             
             # Extract content using helper method
             proposal_text = self._extract_response_content(response)
             
             self.logger.info(f"LLM response received, length: {len(proposal_text) if proposal_text else 0} chars")
             if proposal_text and len(proposal_text) > 0:
-                self.logger.debug(f"Response preview (first 200 chars): {proposal_text[:200]}")
+                self.logger.debug(f"Response preview (first 500 chars): {proposal_text[:500]}")
+                if len(proposal_text) < 100:
+                    self.logger.error(f"Response too short! Only {len(proposal_text)} chars. Full response: {proposal_text}")
             else:
                 self.logger.error(f"Empty response! Full response object: {response}")
             
-            # Check if response is empty - try with increased max_tokens
-            if not proposal_text or not proposal_text.strip():
-                self.logger.warning("LLM returned empty proposal. Retrying with increased max_tokens...")
+            # Check if response is too short - retry with increased max_tokens
+            if not proposal_text or len(proposal_text.strip()) < 100:
+                self.logger.warning(f"LLM returned very short proposal ({len(proposal_text) if proposal_text else 0} chars). Retrying with increased max_tokens...")
                 proposal_text = self._retry_with_increased_tokens(messages)
                 
         except Exception as e:
@@ -428,15 +450,17 @@ class ProposalGenerator:
             # Extract content - same logic as main call
             proposal_text = self._extract_response_content(response)
             
-            if proposal_text and proposal_text.strip():
+            self.logger.info(f"Retry response length: {len(proposal_text) if proposal_text else 0} chars")
+            
+            if proposal_text and len(proposal_text.strip()) >= 100:
                 # Update self.llm for future calls
                 self.llm = retry_llm
-                self.logger.info(f"Successfully generated proposal with increased max_tokens")
+                self.logger.info(f"Successfully generated proposal with increased max_tokens ({len(proposal_text)} chars)")
                 return proposal_text
             else:
-                # Still empty, try fallback models
-                self.logger.warning("Still empty after increasing tokens, trying fallback models...")
-                return self._try_fallback_llm(messages, "Empty response after token increase")
+                # Still too short, try fallback models
+                self.logger.warning(f"Still too short after increasing tokens ({len(proposal_text) if proposal_text else 0} chars), trying fallback models...")
+                return self._try_fallback_llm(messages, "Short response after token increase")
                 
         except Exception as e:
             self.logger.warning(f"Retry with increased tokens failed: {e}, trying fallback models...")
