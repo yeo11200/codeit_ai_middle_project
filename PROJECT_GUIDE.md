@@ -1,102 +1,118 @@
-# RAG ChatBot 프로젝트 학습 가이드 (Study Guide)
+# RAG ChatBot 프로젝트 개발 가이드 (Development Log & Technical Guide)
 
-이 문서는 프로젝트가 시작된 시점부터 현재까지의 개발 과정, 아키텍처 결정, 그리고 해결된 기술적 이슈들을 **A부터 Z까지 상세하게 정리한 교육 자료**입니다.
-
----
-
-## 🏗️ 1단계: 프로젝트 기초 공사 (Phase 0-1)
-
-### 1.1 프로젝트 목표
-RFP(제안요청서) 문서를 분석하고 사용자의 질의에 답변하는 **RAG(검색 증강 생성)** 시스템 구축.
-
-### 1.2 아키텍처 설계 (Architecture)
-- **Ingestion (데이터 적재)**: PDF/HWP 문서 → 텍스트 추출 → Chunking → Embedding → Vector DB
-- **Retrieval (검색)**: 사용자 질문 → Hybrid Search (BM25 + Vector) → Re-ranking
-- **Generation (생성)**: 검색된 문서 + 질문 → Prompt → LLM (GPT-5) → 답변
-
-### 1.3 핵심 컴포넌트 구현
-1.  **문서 로더 (`src/ingest/loader.py`)**:
-    -   초기엔 `olefile`을 썼으나 HWP 추출 품질이 낮아 **`pyhwp (hwp5txt)`** 서브프로세스 방식으로 전환하여 해결.
-2.  **벡터 저장소 (`src/indexing`)**:
-    -   **ChromaDB**를 사용하여 로컬 파일 기반의 벡터 DB 구축.
-    -   임베딩 모델: `text-embedding-3-small` (OpenAI).
+이 문서는 프로젝트의 개발 과정, 기술적 의사결정, 그리고 구현 세부 사항을 **개발 단계(Phase)** 별로 상세하게 기록한 기술 문서입니다.
+단순한 사용법을 넘어, **"어떤 문제를 마주했고, 어떻게 해결했는가?"**에 초점을 맞추어 작성되었습니다.
 
 ---
 
-## ⚙️ 2단계: 시스템 고도화 (Phase 2)
+## 📅 Phase 1: 기반 시스템 구축 (Foundation)
 
-기본적인 검색 기능 구현 후 품질을 높이기 위한 작업을 진행했습니다.
+프로젝트 초기에는 다양한 입찰 공고(RFP) 문서를 처리하고, 이를 벡터화하여 검색할 수 있는 기본 파이프라인을 구축하는 데 집중했습니다.
+
+### 1.1 데이터 파이프라인 (Data Pipeline)
+RFP 문서는 주로 **HWP**와 **PDF** 형식으로 제공됩니다. 이를 텍스트로 변환하는 것이 첫과제였습니다.
+
+-   **HWP 처리**: 초기엔 `olefile`을 사용했으나 텍스트 깨짐 현상이 심각했습니다. 이를 해결하기 위해 **`pyhwp` (hwp5txt)** 라이브러리를 서브프로세스(`subprocess`)로 호출하여 텍스트를 온전히 추출하는 방식을 채택했습니다.
+-   **청킹(Chunking)**: `RecursiveCharacterTextSplitter`를 사용하여 문맥이 끊기지 않도록 1000자 단위로 자르고, 200자의 중복(`chunk_overlap`)을 두었습니다.
+
+### 1.2 벡터 저장소 (Vector Store)
+-   **Model**: `ChromaDB` (Serverless, 로컬 파일 기반)
+-   **Embeddings**: OpenAI `text-embedding-3-small` (가성비 및 한국어 성능 우수)
+
+---
+
+## ⚙️ Phase 2: 검색 품질 고도화 (Advanced Retrieval)
+
+기본 RAG만으로는 "정확한 예산 금액"이나 "특정 자격 요건"을 찾는 데 한계가 있었습니다. 이를 보완하기 위해 **하이브리드 검색**과 **리랭킹**을 도입했습니다.
 
 ### 2.1 하이브리드 검색 (Hybrid Search)
--   **문제**: 단순 벡터 검색은 키워드 매칭(예: 정확한 예산 금액)에 약함.
--   **해결**: `BM25Retriever`(키워드) + `VectorStoreRetriever`(의미)를 **`EnsembleRetriever`**로 결합.
+키워드 매칭(BM25)과 의미 검색(Vector)의 장점을 결합했습니다.
+-   **BM25**: "10억원", "자바" 같은 구체적인 키워드 검색에 강함.
+-   **Vector**: "시스템 구축 경험" 같은 문맥적 의미 검색에 강함.
+-   **Ensemble**: `EnsembleRetriever`를 사용하여 두 검색 결과의 가중치를 5:5로 혼합했습니다.
 
 ### 2.2 리랭킹 (Re-ranking)
--   **도구**: `FlashRank` (경량화된 Cross-Encoder).
--   **로직**: 1차 검색에서 10~20개를 가져온 뒤, 질문과의 관련성 점수를 다시 계산하여 상위 3~5개만 LLM에 전달.
--   **효과**: 정확도 대폭 상승.
-
-### 2.3 서빙 API (`src/api/app.py`)
--   **프레임워크**: **FastAPI** 사용.
--   **포트 이슈**: 개발 중 8000, 8001번 포트 충돌이 잦아 **8002번**으로 최종 확정.
--   **Numpy 이슈**: `FlashRank`가 반환하는 점수(`float32`)가 JSON 직렬화가 안 되는 버그 발생 → `clean_metadata` 함수로 해결.
-
----
-
-## 💻 3단계: 사용자 인터페이스 (Phase 3: Frontend)
-
-개발자만 쓰는 CLI가 아닌, 실제 사용자를 위한 웹 화면을 개발했습니다.
-
-### 3.1 기술 스택
--   **Framework**: **Next.js 14** (App Router).
--   **Styling**: **Tailwind CSS**.
--   **Icons**: `lucide-react`.
-
-### 3.2 주요 기능 (`web/src/components/ChatInterface.tsx`)
--   **채팅 UI**: 카카오톡/ChatGPT 스타일의 대화형 인터페이스.
--   **스트리밍 중단**: 답변 생성 중 `AbortController`를 사용하여 요청을 취소하는 **중단(Stop)** 기능 구현.
--   **출처 표시**: 답변 밑에 "참고 문서" 아코디언을 두어 신뢰성 확보.
-
-### 3.3 연동 (Integration)
--   프론트엔드(`localhost:3000`) ↔ 백엔드(`localhost:8002`) 간 CORS 설정 추가.
--   `Makefile`을 통해 루트 디렉토리에서 한 번에 실행 가능한 환경 구축.
+검색된 문서들의 관련성 점수를 다시 계산하여 순위를 재조정하는 기술입니다.
+-   **Model**: `FlashRank` (경량화된 Cross-Encoder 모델 사용)
+-   **Process**:
+    1.  1차 검색에서 문서 **10개** 후보 추출.
+    2.  FlashRank가 질문과 문서 간의 연관성을 정밀 채점.
+    3.  상위 **3개(`top_k=3`)** 문서만 최종 선별하여 LLM에게 전달.
+    > *결과: 엉뚱한 문서를 참고하여 환각(Hallucination)을 일으키는 빈도가 현저히 줄어듦.*
 
 ---
 
-## 📊 4단계: 결과 시각화 및 데모 (Notebook)
+## 🧠 Phase 3: 생성 모델 & 프롬프트 최적화 (Generation)
 
-결과 보고 및 시연을 위해 Jupyter Notebook을 추가했습니다.
+사용자 경험(UX)을 결정짓는 답변 생성 단계에서의 최적화 작업입니다.
 
-### 4.1 데모 노트북 (`notebooks/demo.ipynb`)
-- **위치**: `notebooks/demo.ipynb`
-- **실행 방법**:
-  ```bash
-  # 의존성 설치 (requirements.txt에 notebook, ipykernel 포함됨)
-  pip install -r requirements.txt
-  
-  # VS Code 등에서 demo.ipynb 열기 또는 jupyter notebook 실행
-  jupyter notebook notebooks/demo.ipynb
-  ```
-- **주요 내용**:
-  1.  **시스템 초기화**: 코드베이스(`src`)를 직접 import하여 RAG 체인 가동.
-  2.  **검색 시연**: 질문 입력 시 `Retrieval` -> `Re-ranking` 과정을 거쳐 어떤 문서가 뽑히는지 리스트 출력.
-  3.  **답변 생성**: LLM이 생성한 최종 답변 확인.
-  4.  **성능 평가**: `eval_results.json` 파일을 그래프/표 (`pandas`)로 시각화하여 수치적 근거 제시.
+### 3.1 LLM 모델 선정
+-   **Model**: **OpenAI `gpt-5-mini`**
+-   **이유**: `gpt-4o` 대비 속도가 빠르고 비용이 저렴하며, RAG 태스크에 충분한 성능을 보여줌.
+-   **설정**: `temperature=0` (창의성을 배제하고 사실 기반 답변 유도)
 
----
+### 3.2 시스템 프롬프트 엔지니어링
+한국어 문서 처리에 특화된 페르소나를 부여했습니다.
 
-## 📝 개발 중 주요 이슈 및 해결 일지 (Troubleshooting Log)
-
-| 이슈 (Issue) | 원인 (Cause) | 해결 (Resolution) |
-| :--- | :--- | :--- |
-| **HWP 텍스트 깨짐** | `olefile` 파서의 한계 | `pyhwp`의 `hwp5txt` CLI 도구 연동으로 교체 |
-| **포트 충돌 (Address in use)** | 이전 프로세스 잔존 & 기본 포트(8000) 혼잡 | `lsof`/`fuser`로 정리 후 포트를 **8002**로 변경 |
-| **JSON 직렬화 오류** | Numpy float32 타입 호환 불가 | Pydantic 응답 생성 전 Python float로 변환 로직 추가 |
-| **LLM 모델 권한 오류** | `gpt-4o` 접근 권한 없음 | 프로젝트 승인된 **`gpt-5`** 모델로 변경 |
-| **Import Error** | LangChain 버전 파편화 | `langchain_core`, `langchain_community` 등으로 경로 최적화 |
+```python
+system_prompt = """당신은 제안요청서(RFP) 문서를 분석하는 전문 어시스턴트입니다.
+제공된 문맥(Context)에 기반하여 사용자의 질문에 답변하세요.
+만약 문맥에서 답을 찾을 수 없다면 "제공된 문서 내용에서 찾을 수 없습니다."라고 답하세요.
+답변은 공손하고 전문적인 어조의 한국어로 작성하세요.
+중요: 답변은 간결하고 명확하게 작성하세요. 가능하면 핵심 내용을 3~5문장 이내로 요약하십시오. 불필요한 부연 설명은 피하세요.
+"""
+```
+> *특히 "3~5문장 이내 요약" 지침을 추가하여, 구구절절한 답변으로 인한 속도 저하를 막았습니다.*
 
 ---
 
-## 📚 마무리
-이 프로젝트는 단순한 RAG 구현을 넘어, **실제 서비스 가능한 수준의 품질(Re-ranking), 사용성(Web UI), 안정성(Error Handling)**을 갖추는 데 주력했습니다.
-이 가이드가 향후 유지보수나 확장에 도움이 되기를 바랍니다.
+## 💻 Phase 4: Streamlit 아키텍처 전환 & UI/UX (Application)
+
+초기에는 FastAPI(백엔드) + Next.js(프론트엔드) 구조였으나, 1인 개발/유지보수의 효율성과 Python 생태계와의 호환성을 고려하여 **Streamlit 단일 앱**으로 전면 리팩토링했습니다.
+
+### 4.1 주요 UI 기능 구현
+사용자의 실제 사용 패턴을 고려하여 기능을 배치했습니다.
+
+1.  **사이드바 문서 관리**:
+    -   `st.sidebar`에 문서 검색 및 다중 선택 기능을 구현 (`st.multiselect` 등 활용).
+    -   선택된 문서가 없으면 자동으로 '전체 문서'를 대상으로 하도록 로직 처리.
+
+2.  **답변 길이 조절 (Slider)**:
+    -   `st.select_slider` 사용.
+    -   [상세 - 보통 - 요약 - 초요약] 4단계로 나누어, `rag.py`에 전달되는 시스템 프롬프트 지시문을 동적으로 변경.
+
+3.  **🚀 고속 모드 (Fast Mode)**:
+    -   `st.toggle` 사용.
+    -   사용자가 속도를 원할 경우, 무거운 **Re-ranking 단계를 생략**하고 1차 검색 결과(Vector+BM25)를 바로 사용하도록 분기 처리.
+    -   *효과: 응답 시간 40초대 -> 3초대로 단축.*
+
+4.  **실시간 스트리밍 (Streaming)**:
+    -   `st.write_stream` 대신 직접 제너레이터(`yield`)를 구현하여 타자 치듯 글자가 나오는 효과 적용.
+    -   `time` 모듈을 이용해 답변 생성 소요 시간을 측정하고 투명도(Opacity) 스타일로 하단에 표시.
+
+---
+
+## 🚀 Phase 5: 인프라 및 배포 (Deployment)
+
+### 5.1 실행 환경 자동화 (`Makefile`)
+복잡한 가상환경(`python -m venv`) 설정과 패키지 설치(`pip install`) 과정을 단 하나의 명령어로 압축했습니다.
+
+```bash
+# Makefile
+run:
+	python3 -m venv .venv
+	.venv/bin/pip install -r requirements.txt
+	.venv/bin/streamlit run app.py
+```
+> 사용자는 터미널에 `make run`만 입력하면 모든 준비가 끝납니다.
+
+---
+
+## 🔍 요약 (Summary)
+
+이 프로젝트는 단순한 "질문하면 답하는 봇"을 넘어, **'정확도'와 '속도'라는 상충되는 두 가치를 사용자가 직접 제어(Control)**할 수 있도록 설계되었습니다.
+
+-   **정확도 필요 시**: 기본 모드 (Hybrid Search + Re-ranking)
+-   **속도 필요 시**: 고속 모드 (Skip Re-ranking) + 초요약 모드 (Prompt Tuning)
+
+이러한 유연한 아키텍처는 향후 문서가 수천 개로 늘어나더라도 확장성 있게 대응할 수 있는 기반이 됩니다.

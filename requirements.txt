@@ -1,6 +1,6 @@
-langchain 
-langchain-community 
-langchain-text-splitters 
+langchain
+langchain-community
+langchain-text-splitters
 langchain-openai
 pandas
 pypdf
@@ -8,32 +8,13 @@ chromadb
 langchain-chroma
 rapidfuzz
 olefile
-pyhwp  # HWP file parser for Korean documents
-python-docx  # DOCX file parser
 pyhwp
+python-docx
 rank_bm25
 pyyaml
 tqdm
 numpy
-
-opencv-python 
-pytesseract
-
-qdrant-client
-langchain-qdrant
-rank-bm25
 flashrank
 streamlit
-# fastapi
-# uvicorn
-
-# Evaluation
-rouge-score
-nltk
-
-# Environment variables
 python-dotenv
-
-# Notebook / Demo
-notebook
-ipykernel
+pysqlite3-binary # For ChromaDB on Streamlit Cloud

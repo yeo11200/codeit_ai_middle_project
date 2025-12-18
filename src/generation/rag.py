@@ -10,22 +10,24 @@ class RAGChain:
     def __init__(self, config: dict, vector_store_wrapper):
         self.vector_store_wrapper = vector_store_wrapper
         self.llm_name = config.get("model.llm_name", "gpt-5")
-        # Initialize LLM
-        # Assumes OPENAI_API_KEY is in environment
+        
+        # LLM 모델 초기화
+        # 환경 변수(OPENAI_API_KEY)가 주입되어 있어야 함
         self.llm = ChatOpenAI(model_name=self.llm_name, temperature=0)
         
-        # Use Hybrid Retriever (BM25 + Chroma)
-        # Fix: Use retrieval.top_k from config (default 3)
+        # 1. 하이브리드 검색기 설정 (BM25 + Vector)
+        # config에서 retrieval.top_k 값을 가져옵니다 (기본값 3)
         k = config.get("retrieval.top_k", 3)
         self.base_retriever = get_hybrid_retriever(
             vector_store=self.vector_store_wrapper.vector_store,
             k=k
         )
         
-        # Default retriever is the base one
+        # 기본 리트리버는 base_retriever로 설정
         self.retriever = self.base_retriever
 
-        # Re-ranking using FlashRank (Optional)
+        # 2. 리랭킹(Re-ranking) 검색기 설정 (선택 사항)
+        # 검색 정확도를 높이기 위해 FlashRank를 사용합니다.
         self.reranker_retriever = None
         if config.get("retrieval.use_reranker", True):
             compressor = FlashrankRerank()
@@ -33,31 +35,34 @@ class RAGChain:
                 base_compressor=compressor,
                 base_retriever=self.base_retriever
             )
-            # Default to reranker if enabled
+            # 리랭커가 활성화된 경우 이를 기본 리트리버로 설정
             self.retriever = self.reranker_retriever
 
     def get_retriever(self, fast_mode: bool = False):
         """
-        Return the appropriate retriever based on the mode.
+        모드에 따라 적절한 검색기를 반환합니다.
+        
+        Args:
+            fast_mode (bool): True일 경우 리랭킹을 건너뛰고 기본(하이브리드) 검색기 사용
         """
         if fast_mode:
             return self.base_retriever
         
-        # If fast_mode is False but reranker is not initialized, fallback to base
+        # 고속 모드가 꺼져있지만 리랭커가 초기화되지 않았다면 base를 반환
         return self.reranker_retriever if self.reranker_retriever else self.base_retriever
 
     def generate_answer(self, query: str, context_docs: List[Any]) -> str:
         """
-        Generate an answer based on the query and retrieved context.
+        사용자의 질문과 검색된 문서를 바탕으로 답변을 생성합니다.
         """
-        # Format context
+        # 검색된 문서 포맷팅
         if not context_docs:
             context_text = "No relevant context found."
         else:
-            # Limit context length loosely to avoid strict token limits for now, 
-            # though gpt-4o has large context.
+            # 문서 내용을 하나의 텍스트로 합침
             context_text = "\n\n".join([f"[Document {i+1}]\n{doc.page_content}" for i, doc in enumerate(context_docs)])
         
+        # ... (시스템 프롬프트는 이미 한국어이므로 생략 가능하나 주석 추가)
         system_prompt = """당신은 제안요청서(RFP) 문서를 분석하는 전문 어시스턴트입니다.
 제공된 문맥(Context)에 기반하여 사용자의 질문에 답변하세요.
 만약 문맥에서 답을 찾을 수 없다면 "제공된 문서 내용에서 찾을 수 없습니다."라고 답하세요.
@@ -73,7 +78,7 @@ Question:
 
 Answer:"""
         
-        print(f"Generating answer with model {self.llm_name}...")
+        print(f"{self.llm_name} 모델로 답변 생성 중...")
         try:
             messages = [
                 SystemMessage(content=system_prompt),
@@ -82,20 +87,24 @@ Answer:"""
             response = self.llm.invoke(messages)
             return response.content
         except Exception as e:
-            return f"Error generating answer: {e}"
+            return f"답변 생성 중 오류 발생: {e}"
 
     def stream_answer(self, query: str, context_docs: List[Any], level: str = "보통"):
         """
-        Stream the answer generator.
-        level: '상세', '보통', '요약', '초요약'
+        LLM 답변을 실시간 스트리밍으로 생성합니다.
+        
+        Args:
+            query (str): 사용자 질문
+            context_docs (List[Any]): 검색된 관련 문서 리스트
+            level (str): 답변 길이/상세도 레벨 ('상세', '보통', '요약', '초요약')
         """
-        # Format context (Duplicate logic for now, could be helper)
+        # 문서 포맷팅 (generate_answer와 중복 로직)
         if not context_docs:
-            context_text = "No relevant context found."
+            context_text = "관련된 문서를 찾을 수 없습니다."
         else:
             context_text = "\n\n".join([f"[Document {i+1}]\n{doc.page_content}" for i, doc in enumerate(context_docs)])
             
-        # 레벨별 지시 사항 정의
+        # 레벨별 지시 사항 정의: 사용자 UI 슬라이더 값에 따라 프롬프트 조정
         level_instructions = {
             "상세": "답변을 매우 구체적이고 상세하게 작성하세요. 문서의 내용을 빠짐없이 설명하고, 필요한 경우 배경 설명도 포함하세요.",
             "보통": "답변을 적절한 길이로 자연스럽게 작성하세요. 핵심 내용과 부가 설명을 균형 있게 포함하세요.",
@@ -103,6 +112,7 @@ Answer:"""
             "초요약": "답변을 극도로 짧게 요약하세요. 가장 중요한 핵심 결론만 1~2문장(100자 이내)으로 작성하세요."
         }
         
+        # 선택된 레벨이 없으면 '보통'을 기본값으로 사용
         instruction = level_instructions.get(level, level_instructions["보통"])
 
         system_prompt = f"""당신은 제안요청서(RFP) 문서를 분석하는 전문 어시스턴트입니다.
@@ -124,10 +134,10 @@ Answer:"""
             HumanMessage(content=user_prompt)
         ]
         
-        # Stream the response
+        # 스트리밍 방식으로 토큰 생성 (Generator yield)
         try:
             for chunk in self.llm.stream(messages):
                 if chunk.content:
                     yield chunk.content
         except Exception as e:
-            yield f"Error generating answer: {e}"
+            yield f"답변 생성 중 오류 발생: {e}"

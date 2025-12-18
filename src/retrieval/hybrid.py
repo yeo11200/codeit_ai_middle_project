@@ -12,53 +12,51 @@ def get_hybrid_retriever(
     weights: List[float] = [0.5, 0.5]
 ) -> BaseRetriever:
     """
-    Create an EnsembleRetriever combining BM25 (keyword) and VectorStore (semantic).
+    BM25(키워드 검색)와 VectorStore(의미 검색)를 결합한 앙상블 검색기(EnsembleRetriever)를 생성합니다.
     
     Args:
-        vector_store: The Chroma (or other) vector store instance.
-        documents: List of documents to initialize BM25. 
-                   If None, attempts to fetch from vector_store if supported.
-        k: Number of documents to retrieve for each retriever.
-        weights: Weights for [BM25, Vector].
+        vector_store: Chroma 등의 벡터 스토어 인스턴스
+        documents: BM25 초기화를 위한 문서 리스트. 
+                   None일 경우 vector_store에서 문서를 가져오려고 시도합니다.
+        k: 각 검색기가 반환할 문서 수 (top-k)
+        weights: [BM25 가중치, Vector 검색 가중치] 비율 (기본값: 0.5:0.5)
         
     Returns:
-        EnsembleRetriever
+        EnsembleRetriever: 결합된 검색기 객체
     """
     
-    # 1. Initialize Vector Retriever
+    # 1. 벡터 검색기(Vector Retriever) 초기화
     vector_retriever = vector_store.as_retriever(search_kwargs={"k": k})
     
-    # 2. Initialize BM25 Retriever
+    # 2. BM25 검색기(BM25 Retriever) 초기화
     if not documents:
-        # Try to fetch all docs from Chroma if accessible
-        # Note: 'get' is specific to Chroma and some others, might vary
+        # DB에서 전체 문서를 가져와서 BM25 인덱스 생성
         try:
-            # Check if it is a Chroma wrapper or actual Chroma object
-            # If it's our VectorStoreWrapper, we need to access the internal store
+            # VectorStoreWrapper 내부의 실제 스토어 객체 혹은 Chroma 객체인지 확인
             if hasattr(vector_store, "get"): 
-                # This fetches metadata and text, might be heavy if large
+                # 메타데이터와 텍스트를 모두 가져옴 (데이터 양이 많으면 무거울 수 있음)
                 result = vector_store.get() 
                 texts = result['documents']
                 metadatas = result['metadatas']
                 documents = [
                     Document(page_content=t, metadata=m) 
-                    for t, m in zip(texts, metadatas) if t # filter None
+                    for t, m in zip(texts, metadatas) if t # None 필터링
                 ]
             else:
-                print("Warning: Could not fetch documents from vector store for BM25. Hybrid search might fail if documents are not provided.")
+                print("경고: 벡터 스토어에서 문서를 가져올 수 없어 BM25 초기화에 실패했습니다. 하이브리드 검색 대신 벡터 검색만 사용합니다.")
                 return vector_retriever
         except Exception as e:
-            print(f"Error fetching documents for BM25: {e}")
+            print(f"BM25 문서 로드 중 오류 발생: {e}")
             return vector_retriever
 
     if not documents:
-        print("Warning: No documents found for BM25 initialization. Returning vector retriever only.")
+        print("경고: BM25 초기화에 필요한 문서가 없습니다. 벡터 검색기만 반환합니다.")
         return vector_retriever
 
     bm25_retriever = BM25Retriever.from_documents(documents)
     bm25_retriever.k = k
 
-    # 3. Create Ensemble
+    # 3. 앙상블(Ensemble) 구성
     ensemble_retriever = EnsembleRetriever(
         retrievers=[bm25_retriever, vector_retriever],
         weights=weights

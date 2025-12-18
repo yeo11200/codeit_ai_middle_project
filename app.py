@@ -6,6 +6,12 @@ import time
 # 프로젝트 루트 경로 추가
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
 
+# [Streamlit Cloud Fix] ChromaDB requires sqlite3 > 3.35. 
+# On Streamlit Cloud, the default sqlite3 is old. We replace it with pysqlite3.
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 from src.common.config import config
 from src.generation.rag import RAGChain
 from src.indexing.vector_store import VectorStoreWrapper
@@ -18,11 +24,13 @@ st.set_page_config(
 )
 
 # 1. 시스템 초기화 (캐싱하여 리소스 절약)
+# RAG 시스템은 무거운 객체(벡터 DB 등)를 로드해야 하므로, 매번 실행되지 않도록 캐싱합니다.
 @st.cache_resource
 def load_rag_system():
-    print("Loading RAG System...")
+    print("RAG 시스템을 로딩 중입니다...")
     vector_store = VectorStoreWrapper(config)
     vector_store.initialize()
+    # RAG 메인 체인 인스턴스 생성
     rag_chain = RAGChain(config=config, vector_store_wrapper=vector_store)
     return rag_chain
 
@@ -36,22 +44,24 @@ except Exception as e:
 with st.sidebar:
     st.header("📄 문서 관리")
     
-    # 세션에 선택된 문서 리스트 저장
+    # 세션 상태에 '선택된 문서 리스트'가 없으면 초기화
     if "selected_docs" not in st.session_state:
         st.session_state.selected_docs = set()
 
+    # 원본 파일 경로 확인 (config에서 로드)
     files_dir = config['paths'].get('raw_data', 'data/files')
     if os.path.exists(files_dir):
+        # 파일 목록 로드
         all_files = sorted(os.listdir(files_dir))
         
-        # 1. 문서 검색 및 추가
+        # 2-1. 문서 검색 및 추가 UI
         st.subheader("문서 검색 & 추가")
         search_query = st.text_input("파일명 검색", placeholder="예: 용인시, 공고...")
         
-        # 검색 필터링
+        # 입력된 검색어로 파일 필터링
         filtered_files = [f for f in all_files if search_query.lower() in f.lower()]
         
-        # 선택 박스 (검색 결과가 있을 때만)
+        # 검색 결과가 있을 때만 선택 박스 표시
         if filtered_files:
             file_to_add = st.selectbox("추가할 문서 선택", filtered_files, key="sb_file_add")
             
@@ -59,23 +69,23 @@ with st.sidebar:
                 if file_to_add:
                     st.session_state.selected_docs.add(file_to_add)
                     st.success(f"'{file_to_add}' 추가됨")
-                    st.rerun() # 추가 즉시 새로고침
+                    st.rerun() # UI 갱신을 위해 재실행
         else:
             st.caption("검색 결과가 없습니다.")
             
         st.markdown("---")
 
-        # 2. 선택된 문서 목록 관리
+        # 2-2. 선택된 문서 목록 확인 및 삭제
         st.subheader(f"선택된 문서 ({len(st.session_state.selected_docs)})")
         
         if not st.session_state.selected_docs:
             st.info("🌐 선택된 문서가 없어 **전체 문서**를 대상으로 검색합니다.")
         else:
-            # 리스트로 변환하여 순회 (삭제 시 안전을 위해)
+            # 집합(Set)을 리스트로 변환하여 순회 (반복 중 수정 방지)
             for doc in list(st.session_state.selected_docs):
                 col1, col2 = st.columns([0.8, 0.2])
                 with col1:
-                    st.text(doc) # 긴 파일명 처리를 위해 text 사용
+                    st.text(doc) # 긴 파일명 처리를 위해 text 위젯 사용
                 with col2:
                     if st.button("❌", key=f"del_{doc}", help=f"{doc} 삭제"):
                         st.session_state.selected_docs.remove(doc)
@@ -84,6 +94,8 @@ with st.sidebar:
             if st.button("🗑️ 전체 삭제 (초기화)"):
                 st.session_state.selected_docs.clear()
                 st.rerun()
+                
+    # ... (에러 처리 및 기타 사이드바 설정)
 
     else:
         st.error(f"경로를 찾을 수 없습니다: {files_dir}")

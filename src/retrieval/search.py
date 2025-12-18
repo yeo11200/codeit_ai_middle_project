@@ -13,12 +13,13 @@ class Retriever:
 
     def retrieve(self, query: str, top_k: int = 5) -> List[Any]:
         """
-        Retrieve relevant documents for a query.
-        Note: top_k usually fixed at init for Ensemble, but we returns what we get.
+        쿼리에 대해 관련성 있는 문서를 검색합니다.
+        참고: EnsembleRetriever는 초기화 시 k값이 고정되므로, 여기서 전달되는 top_k는 
+        내부적으로 이미 설정된 값을 따르거나 재설정해야 합니다. (현재 구조상 초기화 시점의 k 사용)
         """
-        print(f"Retrieving documents (Hybrid) for query: '{query}'")
+        print(f"하이브리드 검색 수행: '{query}'")
         return self.hybrid_retriever.invoke(query)
 
     def retrieve_with_filter(self, query: str, filters: Dict[str, Any], top_k: int = 5) -> List[Any]:
-        # TODO: Implement filtering logic
+        # TODO: 메타데이터 필터링 로직 구현 필요
         pass
