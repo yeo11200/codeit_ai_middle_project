@@ -7,77 +7,38 @@ from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTempla
 from src.common.logger import get_logger
 
 
-PROPOSAL_PROMPT = """당신은 전문 제안서 작성 전문가입니다. 아래 제공된 RFP(제안요청서) 문서의 모든 정보를 철저히 분석하고, 그 내용을 바탕으로 발주 기관에 제출할 전문적인 사업 제안서를 작성하세요.
+PROPOSAL_PROMPT = """RFP 문서를 분석하여 전문 제안서를 작성하세요.
 
-중요: RFP 문서에 명시된 구체적인 정보(사업명, 예산, 마감일, 요구사항, 기술 스펙 등)를 반드시 반영하여 작성하세요. 단순 요약이 아닌, 실제 제안서 형태로 작성하세요.
-
-=== RFP 문서 내용 ===
+RFP 정보:
 {context}
-=== RFP 문서 내용 끝 ===
 
-위 RFP 문서를 분석하여 다음 8개 섹션으로 구성된 전문 제안서를 작성하세요. 각 섹션은 최소 3-5문단으로 상세하게 작성하세요:
+다음 8개 섹션으로 제안서를 작성하세요. 각 섹션을 3-5문단으로 상세히 작성하세요:
 
 ## 1. 사업 이해 및 배경
-- RFP 문서에 명시된 사업의 핵심 목적과 배경을 상세히 설명
-- 발주 기관이 추진하는 사업의 필요성과 중요성 분석
-- 사업 추진 배경 및 정책적 맥락 설명
-- 우리가 이 사업을 이해한 내용을 구체적으로 기술
+RFP에 명시된 사업 목적, 배경, 필요성을 설명하세요.
 
-## 2. 제안 개요
-- 우리의 핵심 가치 제안 및 접근 철학
-- RFP 요구사항에 대한 우리의 해석과 접근 방식
-- 우리가 제공할 솔루션의 핵심 차별화 포인트
-- 사업 성공을 위한 우리의 전략적 관점
+## 2. 제안 개요  
+우리의 핵심 가치 제안과 접근 방식을 설명하세요.
 
 ## 3. 기술 제안
-- RFP에 명시된 기술 요구사항을 충족하는 시스템 아키텍처 제안
-- 핵심 기술 스택 및 플랫폼 구성 방안
-- 주요 기능 모듈 및 시스템 구성도
-- 기술적 우수성 및 혁신성 (성능, 보안, 확장성 등)
-- RFP에 명시된 기술 스펙을 반영한 구체적 기술 방안
+RFP 기술 요구사항을 충족하는 시스템 아키텍처, 기술 스택, 핵심 기능을 제안하세요.
 
 ## 4. 사업 수행 계획
-- RFP에 명시된 일정을 반영한 상세 프로젝트 일정표
-- 단계별 수행 계획 및 마일스톤
-- 각 단계별 주요 산출물 및 성과물
-- 리스크 관리 방안 및 대응 전략
-- 품질 관리 체계
+RFP 일정을 반영한 프로젝트 일정표, 단계별 수행 계획, 마일스톤을 제시하세요.
 
 ## 5. 조직 및 인력 구성
-- 프로젝트 조직도 및 역할 분담
-- 핵심 인력 구성 및 역할 (PM, 기술책임자, 개발자 등)
-- 각 인력의 전문성 및 경험
-- 발주 기관과의 협업 체계
+프로젝트 조직도, 핵심 인력 구성 및 역할, 전문성을 설명하세요.
 
 ## 6. 예산 및 제안 금액
-- RFP에 명시된 예산 범위를 고려한 제안 금액
-- 예산 구성 내역 (인건비, 개발비, 운영비 등)
-- 가격 경쟁력 및 가치 제안
-- 비용 대비 효과 분석
+RFP 예산을 고려한 제안 금액, 예산 구성 내역, 가격 경쟁력을 제시하세요.
 
 ## 7. 기대 효과 및 성과
-- RFP 목표 달성을 위한 구체적 성과 지표
-- 정량적 성과 (처리 속도, 사용자 수, 시스템 안정성 등)
-- 정성적 성과 (사용자 만족도, 업무 효율성 향상 등)
-- ROI 분석 및 장기적 가치
+정량적/정성적 성과 지표, ROI 분석을 제시하세요.
 
 ## 8. 차별화 포인트
-- 경쟁사 대비 우리의 핵심 경쟁 우위
-- 우리의 기술력, 특허, 노하우
-- 유사 사업 수행 경험 및 성공 사례
-- 발주 기관에 제공할 추가 가치
+경쟁 우위, 기술력, 유사 사업 경험을 설명하세요.
 
-작성 지침:
-1. RFP 문서에 명시된 모든 구체적 정보(사업명, 예산, 일정, 요구사항 등)를 반드시 반영하세요
-2. 각 섹션을 최소 3-5문단으로 상세하게 작성하세요
-3. 전문적이고 설득력 있는 문체로 작성하세요
-4. 구체적인 수치, 일정, 기술 명세를 포함하세요
-5. 발주 기관의 요구사항을 정확히 이해하고 충족하는 내용으로 작성하세요
-6. **반드시 전체 제안서를 최소 3000자 이상 작성하세요. 짧은 응답은 절대 금지입니다.**
-
-**중요: 지금부터 위의 8개 섹션을 모두 포함하여 전문적인 제안서를 작성하세요. 각 섹션마다 구체적인 내용을 상세히 작성하세요. 짧은 응답이나 요약이 아닌, 실제 제안서 문서처럼 작성하세요.**
-
-제안서 작성 시작:
+**반드시 8개 섹션을 모두 포함하여 최소 2000자 이상의 전문 제안서를 작성하세요. 지금 바로 작성하세요:**
 """
 
 
@@ -100,11 +61,9 @@ class ProposalGenerator:
         
         # Create prompt template
         system_template = SystemMessagePromptTemplate.from_template(
-            "당신은 정부 및 공공기관 사업 제안서 작성 전문가입니다. RFP 문서의 모든 정보를 철저히 분석하고, "
-            "그 내용을 바탕으로 발주 기관에 제출할 전문적이고 구체적인 사업 제안서를 작성하세요. "
-            "RFP에 명시된 사업명, 예산, 일정, 기술 요구사항 등 모든 구체적 정보를 반드시 반영하여 작성하세요. "
-            "단순 요약이 아닌, 실제 제안서 형태로 최소 3000자 이상의 상세한 내용을 작성하세요. "
-            "짧은 응답은 절대 금지입니다. 반드시 8개 섹션을 모두 포함하여 완전한 제안서를 작성하세요."
+            "당신은 전문 제안서 작성 전문가입니다. RFP 문서를 분석하여 발주 기관에 제출할 전문 제안서를 작성하세요. "
+            "RFP의 사업명, 예산, 일정, 요구사항을 반영하여 최소 2000자 이상의 상세한 제안서를 작성하세요. "
+            "8개 섹션을 모두 포함하여 지금 바로 작성하세요."
         )
         human_template = HumanMessagePromptTemplate.from_template(PROPOSAL_PROMPT)
         
@@ -142,8 +101,8 @@ class ProposalGenerator:
             }
         
         # Build context from retrieved chunks
-        # Limit context length to avoid token limits (reduce to 10 chunks for proposals)
-        max_context_chunks = min(top_k, 10)  # Limit to 10 chunks for proposals
+        # Limit to 5 chunks for faster response
+        max_context_chunks = min(top_k, 5)  # Limit to 5 chunks for speed
         chunks_to_use = retrieval_results["results"][:max_context_chunks]
         context = self._build_context(chunks_to_use)
         
@@ -194,7 +153,7 @@ class ProposalGenerator:
                 self.logger.error(f"Empty response! Full response object: {response}")
             
             # Check if response is too short - retry with increased max_tokens
-            if not proposal_text or len(proposal_text.strip()) < 100:
+            if not proposal_text or len(proposal_text.strip()) < 500:
                 self.logger.warning(f"LLM returned very short proposal ({len(proposal_text) if proposal_text else 0} chars). Retrying with increased max_tokens...")
                 proposal_text = self._retry_with_increased_tokens(messages)
                 
@@ -210,10 +169,20 @@ class ProposalGenerator:
                 self.logger.error(f"Failed to generate proposal: {e}", exc_info=True)
                 raise
         
-        # Final check
-        if not proposal_text or not proposal_text.strip():
-            self.logger.error("Proposal generation returned empty text after all attempts")
-            proposal_text = "제안서 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+        # Final check - if still too short, return error message
+        if not proposal_text or len(proposal_text.strip()) < 500:
+            self.logger.error(f"Proposal generation returned too short text ({len(proposal_text) if proposal_text else 0} chars) after all attempts")
+            proposal_text = f"""제안서 생성 중 오류가 발생했습니다. LLM이 충분한 응답을 생성하지 못했습니다.
+
+생성된 응답 길이: {len(proposal_text) if proposal_text else 0}자
+요구 사항: 최소 2000자 이상
+
+가능한 원인:
+1. LLM 모델 접근 권한 문제
+2. 토큰 제한 초과
+3. 컨텍스트가 너무 길어서 응답 생성 실패
+
+서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."""
         
         # Extract source document IDs
         source_doc_ids = list(set([
@@ -264,8 +233,8 @@ class ProposalGenerator:
             }
         
         # Build context
-        # Limit context length to avoid token limits (reduce to 10 chunks for proposals)
-        max_context_chunks = min(top_k, 10)  # Limit to 10 chunks for proposals
+        # Limit to 5 chunks for faster response
+        max_context_chunks = min(top_k, 5)  # Limit to 5 chunks for speed
         chunks_to_use = doc_chunks[:max_context_chunks]
         context = self._build_context(chunks_to_use)
         
@@ -308,10 +277,20 @@ class ProposalGenerator:
                 self.logger.error(f"Failed to generate proposal: {e}", exc_info=True)
                 raise
         
-        # Final check
-        if not proposal_text or not proposal_text.strip():
-            self.logger.error("Proposal generation returned empty text after all attempts")
-            proposal_text = "제안서 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+        # Final check - if still too short, return error message
+        if not proposal_text or len(proposal_text.strip()) < 500:
+            self.logger.error(f"Proposal generation returned too short text ({len(proposal_text) if proposal_text else 0} chars) after all attempts")
+            proposal_text = f"""제안서 생성 중 오류가 발생했습니다. LLM이 충분한 응답을 생성하지 못했습니다.
+
+생성된 응답 길이: {len(proposal_text) if proposal_text else 0}자
+요구 사항: 최소 2000자 이상
+
+가능한 원인:
+1. LLM 모델 접근 권한 문제
+2. 토큰 제한 초과
+3. 컨텍스트가 너무 길어서 응답 생성 실패
+
+서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."""
         
         return {
             "proposal": proposal_text,
@@ -349,9 +328,9 @@ class ProposalGenerator:
             chunk_text = chunk.get('chunk_text', '')
             metadata = chunk.get('metadata', {})
             
-            # Include more text (up to 800 chars) for better context
-            if len(chunk_text) > 800:
-                chunk_text = chunk_text[:800] + "..."
+            # Limit each chunk to 600 chars for faster processing
+            if len(chunk_text) > 600:
+                chunk_text = chunk_text[:600] + "..."
             
             section_info = ""
             if metadata.get('section_name'):
@@ -408,6 +387,12 @@ class ProposalGenerator:
             except Exception as e:
                 self.logger.debug(f"Error in deep inspection: {e}")
         
+        # Log what we got
+        if proposal_text:
+            self.logger.debug(f"Extracted content: {len(proposal_text)} chars, preview: {proposal_text[:100]}")
+        else:
+            self.logger.error(f"Failed to extract content from response: {type(response)}, dir: {dir(response)}")
+        
         return proposal_text if proposal_text else ""
     
     def _retry_with_increased_tokens(self, messages):
@@ -452,7 +437,7 @@ class ProposalGenerator:
             
             self.logger.info(f"Retry response length: {len(proposal_text) if proposal_text else 0} chars")
             
-            if proposal_text and len(proposal_text.strip()) >= 100:
+            if proposal_text and len(proposal_text.strip()) >= 500:
                 # Update self.llm for future calls
                 self.llm = retry_llm
                 self.logger.info(f"Successfully generated proposal with increased max_tokens ({len(proposal_text)} chars)")
