@@ -7,38 +7,23 @@ from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTempla
 from src.common.logger import get_logger
 
 
-PROPOSAL_PROMPT = """RFP 문서를 분석하여 전문 제안서를 작성하세요.
+PROPOSAL_PROMPT = """RFP 문서를 분석하여 제안서를 작성하세요.
 
 RFP 정보:
 {context}
 
-다음 8개 섹션으로 제안서를 작성하세요. 각 섹션을 3-5문단으로 상세히 작성하세요:
+8개 섹션으로 제안서를 작성하세요 (각 섹션 3-5문단):
 
-## 1. 사업 이해 및 배경
-RFP에 명시된 사업 목적, 배경, 필요성을 설명하세요.
+1. 사업 이해 및 배경
+2. 제안 개요
+3. 기술 제안
+4. 사업 수행 계획
+5. 조직 및 인력 구성
+6. 예산 및 제안 금액
+7. 기대 효과 및 성과
+8. 차별화 포인트
 
-## 2. 제안 개요  
-우리의 핵심 가치 제안과 접근 방식을 설명하세요.
-
-## 3. 기술 제안
-RFP 기술 요구사항을 충족하는 시스템 아키텍처, 기술 스택, 핵심 기능을 제안하세요.
-
-## 4. 사업 수행 계획
-RFP 일정을 반영한 프로젝트 일정표, 단계별 수행 계획, 마일스톤을 제시하세요.
-
-## 5. 조직 및 인력 구성
-프로젝트 조직도, 핵심 인력 구성 및 역할, 전문성을 설명하세요.
-
-## 6. 예산 및 제안 금액
-RFP 예산을 고려한 제안 금액, 예산 구성 내역, 가격 경쟁력을 제시하세요.
-
-## 7. 기대 효과 및 성과
-정량적/정성적 성과 지표, ROI 분석을 제시하세요.
-
-## 8. 차별화 포인트
-경쟁 우위, 기술력, 유사 사업 경험을 설명하세요.
-
-**반드시 8개 섹션을 모두 포함하여 최소 2000자 이상의 전문 제안서를 작성하세요. 지금 바로 작성하세요:**
+**중요: 최소 2000자 이상 작성하세요. 지금 바로 작성하세요:**
 """
 
 
@@ -61,9 +46,7 @@ class ProposalGenerator:
         
         # Create prompt template
         system_template = SystemMessagePromptTemplate.from_template(
-            "당신은 전문 제안서 작성 전문가입니다. RFP 문서를 분석하여 발주 기관에 제출할 전문 제안서를 작성하세요. "
-            "RFP의 사업명, 예산, 일정, 요구사항을 반영하여 최소 2000자 이상의 상세한 제안서를 작성하세요. "
-            "8개 섹션을 모두 포함하여 지금 바로 작성하세요."
+            "당신은 제안서 작성 전문가입니다. RFP를 분석하여 최소 2000자 이상의 전문 제안서를 작성하세요."
         )
         human_template = HumanMessagePromptTemplate.from_template(PROPOSAL_PROMPT)
         
@@ -101,10 +84,14 @@ class ProposalGenerator:
             }
         
         # Build context from retrieved chunks
-        # Limit to 5 chunks for faster response
-        max_context_chunks = min(top_k, 5)  # Limit to 5 chunks for speed
+        # Limit to 3 chunks to ensure enough tokens for response
+        max_context_chunks = min(top_k, 3)  # Limit to 3 chunks to save tokens
         chunks_to_use = retrieval_results["results"][:max_context_chunks]
         context = self._build_context(chunks_to_use)
+        
+        # Estimate tokens (rough: 1 token ≈ 2-3 Korean chars)
+        estimated_input_tokens = len(context) // 2.5
+        self.logger.info(f"Estimated input tokens: ~{estimated_input_tokens:.0f} tokens (context: {len(context)} chars)")
         
         # Add company info to context if provided
         if company_info:
@@ -249,10 +236,14 @@ class ProposalGenerator:
             }
         
         # Build context
-        # Limit to 5 chunks for faster response
-        max_context_chunks = min(top_k, 5)  # Limit to 5 chunks for speed
+        # Limit to 3 chunks to ensure enough tokens for response
+        max_context_chunks = min(top_k, 3)  # Limit to 3 chunks to save tokens
         chunks_to_use = doc_chunks[:max_context_chunks]
         context = self._build_context(chunks_to_use)
+        
+        # Estimate tokens (rough: 1 token ≈ 2-3 Korean chars)
+        estimated_input_tokens = len(context) // 2.5
+        self.logger.info(f"Estimated input tokens: ~{estimated_input_tokens:.0f} tokens (context: {len(context)} chars)")
         
         # Add company info if provided
         if company_info:
@@ -350,9 +341,9 @@ class ProposalGenerator:
             chunk_text = chunk.get('chunk_text', '')
             metadata = chunk.get('metadata', {})
             
-            # Limit each chunk to 600 chars for faster processing
-            if len(chunk_text) > 600:
-                chunk_text = chunk_text[:600] + "..."
+            # Limit each chunk to 400 chars to save tokens for response
+            if len(chunk_text) > 400:
+                chunk_text = chunk_text[:400] + "..."
             
             section_info = ""
             if metadata.get('section_name'):
@@ -434,10 +425,25 @@ class ProposalGenerator:
         except:
             analysis_parts.append(f"사용된 LLM 모델: 확인 불가")
         
-        # Analyze message length
+        # Analyze message length and estimate tokens
         try:
             total_message_length = sum(len(str(msg)) for msg in messages)
+            # Rough estimate: 1 token ≈ 2.5 Korean characters
+            estimated_input_tokens = total_message_length / 2.5
             analysis_parts.append(f"입력 프롬프트 길이: 약 {total_message_length}자")
+            analysis_parts.append(f"예상 입력 토큰 수: 약 {estimated_input_tokens:.0f} 토큰")
+            
+            # Check if input is too long
+            try:
+                max_tokens = self.llm.max_tokens if hasattr(self.llm, 'max_tokens') else 4000
+                if isinstance(max_tokens, int):
+                    # Typical model context window is 8000-16000 tokens
+                    # If input + max_tokens > context window, response space is limited
+                    total_needed = estimated_input_tokens + max_tokens
+                    if total_needed > 8000:
+                        analysis_parts.append(f"⚠️ 입력({estimated_input_tokens:.0f}) + 출력({max_tokens}) = {total_needed:.0f} 토큰으로 컨텍스트 윈도우를 초과할 수 있습니다")
+            except:
+                pass
         except:
             pass
         
