@@ -512,7 +512,12 @@ async def proposal_chat(request: ProposalChatRequest):
                 
                 # Make response more friendly and conversational
                 if "뭐" in request.message or "물어" in request.message or "질문" in request.message:
-                    friendly_response = f"""네, 물론입니다! {search_query} 관련해서 무엇이든 물어보세요.
+                    # Extract topic from query if it's a question
+                    topic = request.query if request.query else "사업"
+                    # Remove question words to get clean topic
+                    topic = topic.replace("관련해서", "").replace("질문", "").replace("물어", "").strip()
+                    
+                    friendly_response = f"""네, 물론입니다! 무엇이든 물어보세요.
 
 제안서 작성에 도움이 되는 정보를 찾아드릴 수 있습니다. 예를 들어:
 - 사업 개요 및 배경
@@ -524,13 +529,19 @@ async def proposal_chat(request: ProposalChatRequest):
                 else:
                     # Use RAG answer but make it friendly
                     if answer:
-                        friendly_response = f"""네, {search_query}에 대해 찾아본 내용입니다:
+                        # Extract clean topic from search_query
+                        topic = search_query
+                        if len(topic) > 50:
+                            # If too long, use query or first part
+                            topic = request.query if request.query else topic[:30] + "..."
+                        
+                        friendly_response = f"""네, 찾아본 내용입니다:
 
 {answer}
 
 추가로 궁금한 점이 있으시면 언제든 말씀해주세요. 제안서 작성이 필요하시면 "제안서 작성해줘" 또는 "제안서 만들어줘"라고 말씀해주세요."""
                     else:
-                        friendly_response = f"""네, {search_query}에 대해 도와드리겠습니다.
+                        friendly_response = f"""네, 도와드리겠습니다.
 
 제안서 작성에 필요한 정보를 찾아드릴 수 있습니다. 구체적으로 어떤 부분이 궁금하신가요?
 
