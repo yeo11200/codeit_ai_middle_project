@@ -9,19 +9,41 @@ from typing import Dict, Optional
 from src.common.logger import get_logger
 from src.common.utils import ensure_dir
 
-# Set Korean font
-try:
-    plt.rcParams['font.family'] = 'AppleGothic'  # Mac
-except:
-    try:
-        plt.rcParams['font.family'] = 'Malgun Gothic'  # Windows
-    except:
+# Set Korean font - try multiple options
+def setup_korean_font():
+    """Setup Korean font for matplotlib."""
+    import platform
+    system = platform.system()
+    
+    if system == 'Darwin':  # macOS
+        fonts_to_try = ['AppleGothic', 'NanumGothic', 'NanumBarunGothic']
+    elif system == 'Windows':
+        fonts_to_try = ['Malgun Gothic', 'NanumGothic', 'Gulim']
+    else:  # Linux
+        fonts_to_try = ['NanumGothic', 'NanumBarunGothic', 'DejaVu Sans']
+    
+    font_set = False
+    for font in fonts_to_try:
         try:
-            plt.rcParams['font.family'] = 'NanumGothic'  # Linux
+            plt.rcParams['font.family'] = font
+            # Test if font works
+            fig, ax = plt.subplots(figsize=(1, 1))
+            ax.text(0.5, 0.5, '한글', fontsize=12)
+            plt.close(fig)
+            font_set = True
+            break
         except:
-            pass
+            continue
+    
+    if not font_set:
+        # Fallback: use default font and warn
+        import warnings
+        warnings.warn("Korean font not found. Korean text may not display correctly.")
+    
+    plt.rcParams['axes.unicode_minus'] = False  # Fix minus sign display
 
-plt.rcParams['axes.unicode_minus'] = False  # Fix minus sign display
+# Setup font on import
+setup_korean_font()
 
 
 class Visualizer:
