@@ -76,7 +76,11 @@ class GenerationAgent:
         query: Optional[str] = None,
         doc_id: Optional[str] = None,
         top_k: int = 30,
-        company_info: Optional[Dict] = None
+        company_info: Optional[Dict] = None,
+        additional_notes: Optional[str] = None,
+        custom_sections: Optional[list] = None,
+        conversation_history: Optional[list] = None,
+        previous_proposal: Optional[str] = None
     ) -> Dict:
         """
         Generate a proposal based on RFP documents.
@@ -86,6 +90,10 @@ class GenerationAgent:
             doc_id: Specific document ID to generate proposal for
             top_k: Number of chunks to retrieve
             company_info: Optional company information to include
+            additional_notes: Optional additional notes to include in proposal
+            custom_sections: Optional list of custom sections to include
+            conversation_history: Optional conversation history for chat-based build-up
+            previous_proposal: Optional previous proposal for incremental updates
         
         Returns:
             Dictionary with proposal content and metadata
