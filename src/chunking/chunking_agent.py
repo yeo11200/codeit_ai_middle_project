@@ -6,6 +6,7 @@ from typing import Dict, List
 from src.chunking.chunker import TextChunker
 from src.chunking.section_chunker import SectionChunker
 from src.chunking.optimized_chunker import OptimizedChunker
+from src.chunking.chunk_summarizer import ChunkSummarizer
 from src.common.logger import get_logger
 from src.common.utils import load_json, save_jsonl
 from src.common.constants import (
@@ -42,6 +43,11 @@ class ChunkingAgent:
         
         # Use optimized chunker by default (can be disabled)
         self.use_optimized = chunk_cfg.get("use_optimized", True)
+        
+        # Chunk summarizer for file-based JSON output
+        self.summarizer = ChunkSummarizer()
+        self.save_file_summaries = chunk_cfg.get("save_file_summaries", True)
+        self.summary_output_dir = chunk_cfg.get("summary_output_dir", "data/features/summaries")
 
     def process_document(self, text: str, doc_id: str, metadata: Dict) -> List[Dict]:
         """Chunk a single document.
@@ -87,12 +93,18 @@ class ChunkingAgent:
         else:
             return self.text_chunker.chunk(text, doc_id=doc_id, metadata=metadata)
 
-    def process_batch(self, input_dir: str, output_path: str) -> None:
+    def process_batch(
+        self,
+        input_dir: str,
+        output_path: str,
+        save_summaries: bool = True
+    ) -> None:
         """Process all preprocessed JSON files and write chunks to JSONL.
 
         Args:
             input_dir: Ingest 결과 JSON들이 있는 디렉토리 (예: data/preprocessed)
             output_path: 청킹 결과 JSONL 경로 (예: data/features/chunks.jsonl)
+            save_summaries: Save file-based JSON summaries (default: True)
         """
         input_path = Path(input_dir)
         if not input_path.exists():
@@ -109,6 +121,7 @@ class ChunkingAgent:
 
         all_chunks: List[Dict] = []
         total_lengths: List[int] = []
+        chunks_by_file: Dict[str, List[Dict]] = {}  # Track chunks by file
 
         self.logger.info(f"Found {len(json_files)} preprocessed files to chunk")
 
@@ -143,6 +156,7 @@ class ChunkingAgent:
                 
                 all_chunks.extend(chunks)
                 total_lengths.extend(len(c["chunk_text"]) for c in chunks)
+                chunks_by_file[doc_id] = chunks  # Store chunks by file
                 processed_count += 1
 
             except Exception as e:
@@ -166,6 +180,27 @@ class ChunkingAgent:
 
         # Save to JSONL
         save_jsonl(all_chunks, output_path)
+        self.logger.info(f"Saved {len(all_chunks)} chunks to JSONL: {output_path}")
+
+        # Create and save file-based summaries
+        if save_summaries and self.save_file_summaries and chunks_by_file:
+            self.logger.info("Creating file-based summaries...")
+            file_summaries = self.summarizer.summarize_chunks_by_file(all_chunks)
+            saved_files = self.summarizer.save_summaries_to_files(
+                file_summaries=file_summaries,
+                output_dir=self.summary_output_dir,
+                save_individual=True,
+                save_combined=True
+            )
+            self.logger.info(f"File summaries saved to: {self.summary_output_dir}")
+            
+            # Also save summary-only version (without chunk texts)
+            summary_only = self.summarizer.create_summary_only(file_summaries)
+            summary_only_path = Path(self.summary_output_dir) / "chunks_summary_only.json"
+            import json
+            with open(summary_only_path, "w", encoding="utf-8") as f:
+                json.dump(summary_only, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"Summary-only file saved to: {summary_only_path}")
 
         # Stats
         total_chunks = len(all_chunks)
@@ -178,7 +213,10 @@ class ChunkingAgent:
         self.logger.info("=" * 60)
         self.logger.info(f"Input dir: {input_dir}")
         self.logger.info(f"Output file: {output_path}")
+        self.logger.info(f"Total files processed: {processed_count}")
         self.logger.info(f"Total chunks: {total_chunks}")
         self.logger.info(f"Avg chunk length: {avg_len:.1f}")
         self.logger.info(f"Min chunk length: {min_len}")
         self.logger.info(f"Max chunk length: {max_len}")
+        if save_summaries and self.save_file_summaries:
+            self.logger.info(f"File summaries: {self.summary_output_dir}")

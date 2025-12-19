@@ -30,6 +30,8 @@ chunking:
   min_chunk_size: 100
   use_section_based: true
   use_optimized: true # Use optimized chunker based on EDA insights
+  save_file_summaries: true # Save file-based JSON summaries
+  summary_output_dir: data/features/summaries # Output directory for summaries
   separators: ["\n\n", "\n", ". ", "! ", "? ", "。", " "]
 
 # Indexing Agent settings
