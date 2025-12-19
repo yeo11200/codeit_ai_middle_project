@@ -12,35 +12,72 @@ from src.common.utils import ensure_dir
 # Set Korean font - try multiple options
 def setup_korean_font():
     """Setup Korean font for matplotlib."""
+    import matplotlib.font_manager as fm
     import platform
+    import warnings
+    
     system = platform.system()
     
+    # Get all available fonts
+    available_fonts = [f.name for f in fm.fontManager.ttflist]
+    
+    # Find Korean fonts
+    korean_font_keywords = ['Gothic', 'Nanum', 'Apple', 'Malgun', 'Gulim', 'Dotum', 'Batang', 'Gungsuh']
+    korean_fonts = [f for f in available_fonts if any(kw in f for kw in korean_font_keywords)]
+    
+    # Priority order by system
     if system == 'Darwin':  # macOS
-        fonts_to_try = ['AppleGothic', 'NanumGothic', 'NanumBarunGothic']
+        priority_fonts = ['AppleGothic', 'Apple SD Gothic Neo', 'Nanum Gothic', 'NanumGothic', 'NanumBarunGothic']
     elif system == 'Windows':
-        fonts_to_try = ['Malgun Gothic', 'NanumGothic', 'Gulim']
+        priority_fonts = ['Malgun Gothic', 'Nanum Gothic', 'NanumGothic', 'Gulim', 'Dotum']
     else:  # Linux
-        fonts_to_try = ['NanumGothic', 'NanumBarunGothic', 'DejaVu Sans']
+        priority_fonts = ['Nanum Gothic', 'NanumGothic', 'NanumBarunGothic', 'NanumBarunGothicOTF']
+    
+    # Try priority fonts first
+    fonts_to_try = priority_fonts + [f for f in korean_fonts if f not in priority_fonts]
     
     font_set = False
+    selected_font = None
+    
     for font in fonts_to_try:
-        try:
-            plt.rcParams['font.family'] = font
-            # Test if font works
-            fig, ax = plt.subplots(figsize=(1, 1))
-            ax.text(0.5, 0.5, '한글', fontsize=12)
-            plt.close(fig)
-            font_set = True
-            break
-        except:
-            continue
+        if font in available_fonts:
+            try:
+                plt.rcParams['font.family'] = font
+                # Quick test
+                fig, ax = plt.subplots(figsize=(1, 1))
+                ax.text(0.5, 0.5, '한글', fontsize=12)
+                plt.close(fig)
+                font_set = True
+                selected_font = font
+                break
+            except Exception as e:
+                continue
     
     if not font_set:
-        # Fallback: use default font and warn
-        import warnings
-        warnings.warn("Korean font not found. Korean text may not display correctly.")
+        # Try to use any available font that might support Korean
+        if korean_fonts:
+            try:
+                selected_font = korean_fonts[0]
+                plt.rcParams['font.family'] = selected_font
+                font_set = True
+            except:
+                pass
+        
+        if not font_set:
+            # Last resort: use sans-serif and hope for the best
+            plt.rcParams['font.family'] = 'sans-serif'
+            warnings.warn(
+                f"Korean font not found. Available Korean fonts: {korean_fonts[:5]}. "
+                "Korean text may not display correctly. "
+                "Please install a Korean font (e.g., NanumGothic)."
+            )
     
     plt.rcParams['axes.unicode_minus'] = False  # Fix minus sign display
+    
+    if font_set and selected_font:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Using Korean font: {selected_font}")
 
 # Setup font on import
 setup_korean_font()
