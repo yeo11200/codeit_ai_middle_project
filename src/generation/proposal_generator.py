@@ -11,6 +11,8 @@ PROPOSAL_PROMPT = """RFP 문서를 분석하여 제안서를 작성하세요.
 
 RFP 정보:
 {context}
+{conversation_context}
+{previous_proposal_context}
 
 8개 섹션으로 제안서를 작성하세요 (각 섹션 3-5문단):
 
@@ -22,6 +24,9 @@ RFP 정보:
 6. 예산 및 제안 금액
 7. 기대 효과 및 성과
 8. 차별화 포인트
+{additional_instructions}
+
+{update_instruction}
 
 **중요: 최소 2000자 이상 작성하세요. 지금 바로 작성하세요:**
 """
@@ -59,7 +64,11 @@ class ProposalGenerator:
         self,
         query: str,
         top_k: int = 30,
-        company_info: Optional[Dict] = None
+        company_info: Optional[Dict] = None,
+        additional_notes: Optional[str] = None,
+        custom_sections: Optional[List[str]] = None,
+        conversation_history: Optional[List[Dict]] = None,
+        previous_proposal: Optional[str] = None
     ) -> Dict:
         """
         Generate proposal based on search query.
@@ -100,8 +109,41 @@ class ProposalGenerator:
         
         self.logger.info(f"Context built: {len(chunks_to_use)} chunks, {len(context)} chars")
         
+        # Add additional notes to context if provided
+        if additional_notes:
+            context = f"{context}\n\n[추가 요청사항]\n{additional_notes}"
+        
+        # Add custom sections to prompt if provided
+        custom_sections_text = ""
+        if custom_sections:
+            custom_sections_text = "\n\n추가로 다음 내용도 포함하세요:\n" + "\n".join([f"- {section}" for section in custom_sections])
+        
+        # Build conversation context
+        conversation_context = ""
+        if conversation_history:
+            conv_text = "\n\n[이전 대화 기록]\n"
+            for msg in conversation_history:
+                role = msg.get("role", "user") if isinstance(msg, dict) else (msg.role if hasattr(msg, "role") else "user")
+                content = msg.get("content", "") if isinstance(msg, dict) else (msg.content if hasattr(msg, "content") else str(msg))
+                role_kr = "사용자" if role == "user" else "어시스턴트"
+                conv_text += f"{role_kr}: {content}\n"
+            conversation_context = conv_text
+        
+        # Build previous proposal context
+        previous_proposal_context = ""
+        update_instruction = ""
+        if previous_proposal:
+            previous_proposal_context = f"\n\n[이전 제안서]\n{previous_proposal[:2000]}..."  # Limit to 2000 chars
+            update_instruction = "\n**중요: 위의 이전 제안서와 대화 기록을 반영하여 제안서를 개선하고 업데이트하세요. 이전 내용을 유지하면서 새로운 요구사항을 반영하세요.**"
+        
         # Generate proposal
-        messages = self.prompt.format_messages(context=context)
+        messages = self.prompt.format_messages(
+            context=context,
+            conversation_context=conversation_context,
+            previous_proposal_context=previous_proposal_context,
+            additional_instructions=custom_sections_text if custom_sections_text else "",
+            update_instruction=update_instruction
+        )
         
         self.logger.info(f"Generating proposal for query: {query}, context length: {len(context)} chars")
         self.logger.info(f"LLM model: {self.llm.model_name if hasattr(self.llm, 'model_name') else 'unknown'}")
@@ -204,7 +246,11 @@ class ProposalGenerator:
         self,
         doc_id: str,
         top_k: int = 30,
-        company_info: Optional[Dict] = None
+        company_info: Optional[Dict] = None,
+        additional_notes: Optional[str] = None,
+        custom_sections: Optional[List[str]] = None,
+        conversation_history: Optional[List[Dict]] = None,
+        previous_proposal: Optional[str] = None
     ) -> Dict:
         """
         Generate proposal for a specific document.
@@ -252,8 +298,20 @@ class ProposalGenerator:
         
         self.logger.info(f"Context built: {len(chunks_to_use)} chunks, {len(context)} chars")
         
+        # Add additional notes to context if provided
+        if additional_notes:
+            context = f"{context}\n\n[추가 요청사항]\n{additional_notes}"
+        
+        # Add custom sections to prompt if provided
+        custom_sections_text = ""
+        if custom_sections:
+            custom_sections_text = "\n\n추가로 다음 내용도 포함하세요:\n" + "\n".join([f"- {section}" for section in custom_sections])
+        
         # Generate proposal
-        messages = self.prompt.format_messages(context=context)
+        messages = self.prompt.format_messages(
+            context=context,
+            additional_instructions=custom_sections_text if custom_sections_text else ""
+        )
         
         try:
             response = self.llm.invoke(messages)

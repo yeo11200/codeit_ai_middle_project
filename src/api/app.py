@@ -104,11 +104,19 @@ class ExtractResponse(BaseModel):
     doc_id: str
 
 
+class ConversationMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
 class ProposalRequest(BaseModel):
     query: Optional[str] = None
     doc_id: Optional[str] = None
     top_k: Optional[int] = 30
     company_info: Optional[Dict] = None
+    additional_notes: Optional[str] = None  # 추가로 제안서에 포함할 내용 (예: "제안 내용에 대한 상세한 기술·일정·예산 산출근거는 추가 자료로 제출하겠습니다.")
+    custom_sections: Optional[List[str]] = None  # 추가로 포함할 커스텀 섹션 목록
+    conversation_history: Optional[List[ConversationMessage]] = None  # 이전 대화 기록 (채팅 빌드업용)
+    previous_proposal: Optional[str] = None  # 이전에 생성된 제안서 (업데이트용)
 
 
 class ProposalResponse(BaseModel):
@@ -120,6 +128,23 @@ class ProposalResponse(BaseModel):
     response_length: Optional[int] = None
     model_used: Optional[str] = None
     analysis: Optional[str] = None
+
+
+class ProposalChatRequest(BaseModel):
+    message: str  # 사용자 메시지
+    conversation_history: Optional[List[ConversationMessage]] = None  # 이전 대화 기록
+    query: Optional[str] = None  # RFP 검색 쿼리 (첫 메시지에서 설정)
+    doc_id: Optional[str] = None  # 특정 문서 ID (첫 메시지에서 설정)
+    company_info: Optional[Dict] = None
+    previous_proposal: Optional[str] = None  # 이전에 생성된 제안서
+
+
+class ProposalChatResponse(BaseModel):
+    response: str  # 어시스턴트 응답
+    is_proposal: bool  # 제안서인지 일반 답변인지
+    proposal: Optional[str] = None  # 제안서 내용 (is_proposal=True일 때)
+    sources: Optional[List[str]] = None
+    conversation_history: List[ConversationMessage]  # 업데이트된 대화 기록
 
 
 # Startup event
@@ -325,11 +350,23 @@ async def generate_proposal(request: ProposalRequest):
         )
     
     try:
+        # Convert conversation_history from Pydantic models to dicts
+        conv_history = None
+        if request.conversation_history:
+            conv_history = [
+                {"role": msg.role, "content": msg.content}
+                for msg in request.conversation_history
+            ]
+        
         result = generation_agent.generate_proposal(
             query=request.query,
             doc_id=request.doc_id,
             top_k=request.top_k,
-            company_info=request.company_info
+            company_info=request.company_info,
+            additional_notes=request.additional_notes,
+            custom_sections=request.custom_sections,
+            conversation_history=conv_history,
+            previous_proposal=request.previous_proposal
         )
         
         # Extract analysis if present
@@ -366,6 +403,165 @@ async def generate_proposal(request: ProposalRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Proposal generation failed: {str(e)}"
+        )
+
+
+# Proposal Chat endpoint (대화형 제안서 빌드업)
+@app.post("/api/proposal-chat", response_model=ProposalChatResponse)
+async def proposal_chat(request: ProposalChatRequest):
+    """
+    대화형 제안서 빌드업 채팅 엔드포인트.
+    
+    사용자와 대화를 주고받으며 점진적으로 제안서를 빌드업합니다.
+    - 일반 질문: 친절하게 답변
+    - 제안서 생성 요청: 제안서 생성
+    
+    Args:
+        request: 채팅 요청 (메시지, 대화 히스토리 등)
+    
+    Returns:
+        응답 및 업데이트된 대화 히스토리
+    """
+    if generation_agent is None:
+        raise HTTPException(status_code=503, detail="Generation agent not initialized")
+    
+    try:
+        # Convert conversation history
+        conv_history = []
+        if request.conversation_history:
+            conv_history = [
+                {"role": msg.role, "content": msg.content}
+                for msg in request.conversation_history
+            ]
+        
+        # Add current user message to history
+        user_message = {"role": "user", "content": request.message}
+        conv_history.append(user_message)
+        
+        # Detect intent: proposal generation request or general question
+        message_lower = request.message.lower()
+        proposal_keywords = [
+            "제안서", "제안서 작성", "제안서 만들어", "제안서 생성", 
+            "제안서 작성해", "제안서 만들어줘", "제안서 생성해줘",
+            "제안서 완성", "제안서 최종", "제안서 최종본"
+        ]
+        is_proposal_request = any(keyword in message_lower for keyword in proposal_keywords)
+        
+        # If it's a proposal request, generate proposal
+        if is_proposal_request:
+            # Use query or doc_id from request or conversation history
+            query = request.query
+            doc_id = request.doc_id
+            
+            # If not provided, try to extract from conversation
+            if not query and not doc_id:
+                # Look for query in conversation history
+                for msg in conv_history:
+                    if msg["role"] == "user" and len(msg["content"]) > 10:
+                        # Use first substantial user message as query
+                        query = msg["content"]
+                        break
+            
+            if not query and not doc_id:
+                # Default query
+                query = "사업"
+            
+            # Generate proposal
+            result = generation_agent.generate_proposal(
+                query=query,
+                doc_id=doc_id,
+                top_k=10,
+                company_info=request.company_info,
+                conversation_history=conv_history[:-1],  # Exclude current message
+                previous_proposal=request.previous_proposal
+            )
+            
+            proposal_text = result["proposal"]
+            
+            # Create friendly response
+            response_text = f"""네, 제안서를 작성해드렸습니다!
+
+{proposal_text}
+
+추가로 수정하거나 보완할 부분이 있으시면 말씀해주세요."""
+            
+            # Update conversation history with assistant response
+            conv_history.append({"role": "assistant", "content": response_text})
+            
+            return ProposalChatResponse(
+                response=response_text,
+                is_proposal=True,
+                proposal=proposal_text,
+                sources=result.get("sources", []),
+                conversation_history=[
+                    ConversationMessage(role=msg["role"], content=msg["content"])
+                    for msg in conv_history
+                ]
+            )
+        
+        # Otherwise, answer as a friendly assistant
+        else:
+            # First, try to answer using RAG
+            try:
+                # Use query or doc_id if available
+                search_query = request.query or request.message
+                
+                # Answer question using RAG
+                qa_result = generation_agent.answer_question(search_query)
+                answer = qa_result.get("answer", "")
+                
+                # Make response more friendly and conversational
+                if "뭐" in request.message or "물어" in request.message or "질문" in request.message:
+                    friendly_response = f"""네, 물론입니다! {search_query} 관련해서 무엇이든 물어보세요.
+
+제안서 작성에 도움이 되는 정보를 찾아드릴 수 있습니다. 예를 들어:
+- 사업 개요 및 배경
+- 기술 요구사항
+- 일정 및 예산
+- 제안서 작성 방법
+
+어떤 부분이 궁금하신가요?"""
+                else:
+                    # Use RAG answer but make it friendly
+                    if answer:
+                        friendly_response = f"""네, {search_query}에 대해 찾아본 내용입니다:
+
+{answer}
+
+추가로 궁금한 점이 있으시면 언제든 말씀해주세요. 제안서 작성이 필요하시면 "제안서 작성해줘" 또는 "제안서 만들어줘"라고 말씀해주세요."""
+                    else:
+                        friendly_response = f"""네, {search_query}에 대해 도와드리겠습니다.
+
+제안서 작성에 필요한 정보를 찾아드릴 수 있습니다. 구체적으로 어떤 부분이 궁금하신가요?
+
+또는 "제안서 작성해줘"라고 말씀하시면 바로 제안서를 작성해드릴 수 있습니다."""
+            except Exception as e:
+                logger.warning(f"RAG answer failed, using default friendly response: {e}")
+                friendly_response = f"""안녕하세요! {request.message}에 대해 도와드리겠습니다.
+
+제안서 작성에 도움이 되는 정보를 찾아드릴 수 있습니다. 구체적으로 어떤 부분이 궁금하신가요?
+
+또는 "제안서 작성해줘"라고 말씀하시면 바로 제안서를 작성해드릴 수 있습니다."""
+            
+            # Update conversation history
+            conv_history.append({"role": "assistant", "content": friendly_response})
+            
+            return ProposalChatResponse(
+                response=friendly_response,
+                is_proposal=False,
+                proposal=None,
+                sources=None,
+                conversation_history=[
+                    ConversationMessage(role=msg["role"], content=msg["content"])
+                    for msg in conv_history
+                ]
+            )
+    
+    except Exception as e:
+        logger.error(f"Proposal chat failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Proposal chat failed: {str(e)}"
         )
 
 

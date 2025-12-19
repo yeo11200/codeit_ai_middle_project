@@ -94,13 +94,21 @@ class GenerationAgent:
             return self.proposal_generator.generate_from_doc_id(
                 doc_id=doc_id,
                 top_k=top_k,
-                company_info=company_info
+                company_info=company_info,
+                additional_notes=additional_notes,
+                custom_sections=custom_sections,
+                conversation_history=conversation_history,
+                previous_proposal=previous_proposal
             )
         elif query:
             return self.proposal_generator.generate_from_query(
                 query=query,
                 top_k=top_k,
-                company_info=company_info
+                company_info=company_info,
+                additional_notes=additional_notes,
+                custom_sections=custom_sections,
+                conversation_history=conversation_history,
+                previous_proposal=previous_proposal
             )
         else:
             raise ValueError("Either 'query' or 'doc_id' must be provided")

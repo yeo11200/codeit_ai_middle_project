@@ -261,7 +261,9 @@ RFP 문서를 기반으로 제안서 자동 생성
     "strengths": ["AI 기술", "빅데이터 분석", "클라우드 인프라"],
     "experience": "정부 프로젝트 10건 이상 수행",
     "technologies": ["Python", "TensorFlow", "AWS", "Docker"]
-  }
+  },
+  "additional_notes": "제안 내용에 대한 상세한 기술·일정·예산 산출근거는 추가 자료로 제출하겠습니다.",
+  "custom_sections": ["보안 인증 계획", "유지보수 지원 방안"]
 }
 ```
 
@@ -274,9 +276,28 @@ RFP 문서를 기반으로 제안서 자동 생성
   "company_info": {
     "company_name": "우리기업",
     "description": "AI 기반 솔루션 전문 기업"
-  }
+  },
+  "additional_notes": "제안 내용에 대한 상세한 기술·일정·예산 산출근거는 추가 자료로 제출하겠습니다."
 }
 ```
+
+**요청 필드 설명:**
+
+- `query` (선택): 검색 쿼리 (문서 ID가 없을 때 사용)
+- `doc_id` (선택): 특정 문서 ID (쿼리가 없을 때 사용)
+- `top_k` (선택): 검색할 청크 수 (기본값: 30)
+- `company_info` (선택): 회사 정보 객체
+  - `company_name`: 회사명
+  - `description`: 회사 소개
+  - `strengths`: 핵심 역량 배열
+  - `experience`: 주요 경험
+  - `technologies`: 기술 스택 배열
+- `additional_notes` (선택): 제안서에 포함할 추가 문구 (예: "상세 기술·일정·예산 산출근거는 추가 자료로 제출")
+- `custom_sections` (선택): 추가로 포함할 커스텀 섹션 목록
+- `conversation_history` (선택): 이전 대화 기록 (채팅 빌드업용)
+  - `role`: "user" 또는 "assistant"
+  - `content`: 메시지 내용
+- `previous_proposal` (선택): 이전에 생성된 제안서 (업데이트용)
 
 **응답:**
 
@@ -308,6 +329,37 @@ curl -X POST "http://localhost:8000/api/generate-proposal" \
   }'
 ```
 
+**채팅 빌드업 예시 (점진적 제안서 개선):**
+
+```json
+// 1단계: 초기 제안서 생성
+{
+  "query": "교육 관련 사업",
+  "top_k": 5
+}
+
+// 2단계: 질문을 추가하여 제안서 개선
+{
+  "query": "교육 관련 사업",
+  "top_k": 5,
+  "conversation_history": [
+    {
+      "role": "user",
+      "content": "교육 관련 사업관련해서 질문좀 해도될까?"
+    },
+    {
+      "role": "assistant",
+      "content": "네, 물론입니다. 어떤 부분이 궁금하신가요?"
+    },
+    {
+      "role": "user",
+      "content": "기술 스택은 뭐가 좋을까요?"
+    }
+  ],
+  "previous_proposal": "이전에 생성된 제안서 내용..."
+}
+```
+
 **제안서 구조:**
 
 생성된 제안서는 다음 섹션을 포함합니다:
@@ -320,6 +372,138 @@ curl -X POST "http://localhost:8000/api/generate-proposal" \
 6. **예산 및 제안 금액** - 예산 구성 내역 및 가격 경쟁력
 7. **기대 효과 및 성과** - 정량적/정성적 성과 지표
 8. **차별화 포인트** - 경쟁사 대비 우위 및 특허/기술력
+
+---
+
+## 💬 대화형 제안서 빌드업 (Proposal Chat)
+
+**POST** `/api/proposal-chat`
+
+대화를 주고받으며 점진적으로 제안서를 빌드업하는 채팅 엔드포인트입니다.
+
+**특징:**
+
+- 일반 질문에 친절하게 답변
+- 대화 히스토리 자동 관리
+- "제안서 작성해줘" 등의 키워드로 제안서 생성
+- 점진적으로 제안서 개선
+
+**요청 예시:**
+
+```json
+// 1단계: 첫 질문
+{
+  "message": "교육 관련 사업관련해서 질문좀 해도될까?",
+  "query": "교육 관련 사업"
+}
+
+// 2단계: 추가 질문 (대화 히스토리 포함)
+{
+  "message": "기술 스택은 뭐가 좋을까요?",
+  "query": "교육 관련 사업",
+  "conversation_history": [
+    {
+      "role": "user",
+      "content": "교육 관련 사업관련해서 질문좀 해도될까?"
+    },
+    {
+      "role": "assistant",
+      "content": "네, 물론입니다! 교육 관련 사업에 대해 무엇이든 물어보세요..."
+    }
+  ]
+}
+
+// 3단계: 제안서 생성 요청
+{
+  "message": "제안서 작성해줘",
+  "query": "교육 관련 사업",
+  "conversation_history": [
+    // ... 이전 대화들 ...
+  ]
+}
+```
+
+**응답 예시:**
+
+```json
+{
+  "response": "네, 물론입니다! 교육 관련 사업에 대해 무엇이든 물어보세요...",
+  "is_proposal": false,
+  "proposal": null,
+  "sources": null,
+  "conversation_history": [
+    {
+      "role": "user",
+      "content": "교육 관련 사업관련해서 질문좀 해도될까?"
+    },
+    {
+      "role": "assistant",
+      "content": "네, 물론입니다! 교육 관련 사업에 대해 무엇이든 물어보세요..."
+    }
+  ]
+}
+```
+
+**제안서 생성 응답:**
+
+```json
+{
+  "response": "네, 제안서를 작성해드렸습니다!\n\n[제안서 내용]...",
+  "is_proposal": true,
+  "proposal": "[전체 제안서 내용]",
+  "sources": ["20240404154"],
+  "conversation_history": [
+    // ... 전체 대화 기록 ...
+  ]
+}
+```
+
+**cURL 예시:**
+
+```bash
+# 1단계: 첫 질문
+curl -X POST "http://localhost:8000/api/proposal-chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "교육 관련 사업관련해서 질문좀 해도될까?",
+    "query": "교육 관련 사업"
+  }'
+
+# 2단계: 추가 질문
+curl -X POST "http://localhost:8000/api/proposal-chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "기술 스택은 뭐가 좋을까요?",
+    "query": "교육 관련 사업",
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "교육 관련 사업관련해서 질문좀 해도될까?"
+      },
+      {
+        "role": "assistant",
+        "content": "네, 물론입니다!"
+      }
+    ]
+  }'
+
+# 3단계: 제안서 생성
+curl -X POST "http://localhost:8000/api/proposal-chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "제안서 작성해줘",
+    "query": "교육 관련 사업",
+    "conversation_history": [
+      // ... 이전 대화들 ...
+    ]
+  }'
+```
+
+**제안서 생성 키워드:**
+
+- "제안서", "제안서 작성", "제안서 만들어", "제안서 생성"
+- "제안서 작성해", "제안서 만들어줘", "제안서 생성해줘"
+- "제안서 완성", "제안서 최종", "제안서 최종본"
 
 ---
 
@@ -364,11 +548,18 @@ response = requests.post(
             "company_name": "우리기업",
             "description": "AI 기반 솔루션 전문 기업",
             "strengths": ["AI 기술", "빅데이터 분석"]
-        }
+        },
+        "additional_notes": "제안 내용에 대한 상세한 기술·일정·예산 산출근거는 추가 자료로 제출하겠습니다.",
+        "custom_sections": [
+            "보안 인증 계획",
+            "유지보수 지원 방안"
+        ]
     }
 )
 proposal = response.json()
 print(proposal["proposal"])
+print(f"사용된 모델: {proposal.get('model_used')}")
+print(f"응답 길이: {proposal.get('response_length')}자")
 
 # 제안서 생성 (문서 ID 기반)
 response = requests.post(
@@ -377,6 +568,50 @@ response = requests.post(
 )
 proposal = response.json()
 print(proposal["proposal"])
+
+# 대화형 제안서 빌드업
+conversation_history = []
+
+# 1단계: 첫 질문
+response = requests.post(
+    f"{BASE_URL}/api/proposal-chat",
+    json={
+        "message": "교육 관련 사업관련해서 질문좀 해도될까?",
+        "query": "교육 관련 사업"
+    }
+)
+result = response.json()
+print(result["response"])
+conversation_history = result["conversation_history"]
+
+# 2단계: 추가 질문
+response = requests.post(
+    f"{BASE_URL}/api/proposal-chat",
+    json={
+        "message": "기술 스택은 뭐가 좋을까요?",
+        "query": "교육 관련 사업",
+        "conversation_history": conversation_history
+    }
+)
+result = response.json()
+print(result["response"])
+conversation_history = result["conversation_history"]
+
+# 3단계: 제안서 생성
+response = requests.post(
+    f"{BASE_URL}/api/proposal-chat",
+    json={
+        "message": "제안서 작성해줘",
+        "query": "교육 관련 사업",
+        "conversation_history": conversation_history
+    }
+)
+result = response.json()
+if result["is_proposal"]:
+    print("제안서 생성 완료!")
+    print(result["proposal"])
+else:
+    print(result["response"])
 ```
 
 ---
