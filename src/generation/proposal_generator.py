@@ -180,15 +180,25 @@ class ProposalGenerator:
                 raise
         
         # Final check - accept any response, even if short
+        analysis = self._analyze_response_quality(proposal_text, messages)
+        
         if not proposal_text or not proposal_text.strip():
             self.logger.error(f"Proposal generation returned empty text after all attempts")
-            proposal_text = "제안서 생성에 실패했습니다. 서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."
+            proposal_text = f"""제안서 생성에 실패했습니다.
+
+{analysis}
+
+서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."""
         elif len(proposal_text.strip()) < 200:
             self.logger.warning(f"Proposal is very short ({len(proposal_text)} chars) but returning it anyway")
-            # Add a note to the proposal
+            # Add analysis to the proposal
             proposal_text = f"""{proposal_text}
 
-[주의: 이 제안서는 매우 짧게 생성되었습니다. LLM 모델 설정을 확인하거나 다른 모델을 시도해주세요.]"""
+---
+[응답 분석]
+{analysis}
+---
+"""
         
         # Extract source document IDs
         source_doc_ids = list(set([
@@ -284,15 +294,25 @@ class ProposalGenerator:
                 raise
         
         # Final check - accept any response, even if short
+        analysis = self._analyze_response_quality(proposal_text, messages)
+        
         if not proposal_text or not proposal_text.strip():
             self.logger.error(f"Proposal generation returned empty text after all attempts")
-            proposal_text = "제안서 생성에 실패했습니다. 서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."
+            proposal_text = f"""제안서 생성에 실패했습니다.
+
+{analysis}
+
+서버 로그를 확인하거나 다른 LLM 모델을 시도해주세요."""
         elif len(proposal_text.strip()) < 200:
             self.logger.warning(f"Proposal is very short ({len(proposal_text)} chars) but returning it anyway")
-            # Add a note to the proposal
+            # Add analysis to the proposal
             proposal_text = f"""{proposal_text}
 
-[주의: 이 제안서는 매우 짧게 생성되었습니다. LLM 모델 설정을 확인하거나 다른 모델을 시도해주세요.]"""
+---
+[응답 분석]
+{analysis}
+---
+"""
         
         return {
             "proposal": proposal_text,
@@ -396,6 +416,55 @@ class ProposalGenerator:
             self.logger.error(f"Failed to extract content from response: {type(response)}, dir: {dir(response)}")
         
         return proposal_text if proposal_text else ""
+    
+    def _analyze_response_quality(self, proposal_text: str, messages) -> str:
+        """Analyze why the response might be short."""
+        analysis_parts = []
+        
+        # Get response info
+        response_length = len(proposal_text) if proposal_text else 0
+        analysis_parts.append(f"생성된 응답 길이: {response_length}자")
+        
+        # Get LLM info
+        try:
+            model_name = self.llm.model_name if hasattr(self.llm, 'model_name') else str(self.llm.model)
+            max_tokens = self.llm.max_tokens if hasattr(self.llm, 'max_tokens') else 'unknown'
+            analysis_parts.append(f"사용된 LLM 모델: {model_name}")
+            analysis_parts.append(f"설정된 max_tokens: {max_tokens}")
+        except:
+            analysis_parts.append(f"사용된 LLM 모델: 확인 불가")
+        
+        # Analyze message length
+        try:
+            total_message_length = sum(len(str(msg)) for msg in messages)
+            analysis_parts.append(f"입력 프롬프트 길이: 약 {total_message_length}자")
+        except:
+            pass
+        
+        # Possible reasons
+        reasons = []
+        if response_length == 0:
+            reasons.append("• LLM이 응답을 생성하지 못했습니다 (모델 접근 권한 문제 가능)")
+        elif response_length < 50:
+            reasons.append("• LLM이 매우 짧은 응답만 생성했습니다 (모델 제한 또는 프롬프트 문제 가능)")
+        elif response_length < 200:
+            reasons.append("• LLM이 짧은 응답을 생성했습니다")
+            reasons.append("• max_tokens 설정이 충분하지 않을 수 있습니다")
+            reasons.append("• 입력 프롬프트가 너무 길어서 응답 공간이 부족할 수 있습니다")
+        
+        if max_tokens != 'unknown' and isinstance(max_tokens, int) and max_tokens < 2000:
+            reasons.append(f"• max_tokens({max_tokens})가 제안서 생성에 부족할 수 있습니다 (권장: 4000 이상)")
+        
+        if reasons:
+            analysis_parts.append("\n가능한 원인:")
+            analysis_parts.extend(reasons)
+        
+        # Response preview
+        if proposal_text:
+            preview = proposal_text[:200].replace('\n', ' ')
+            analysis_parts.append(f"\n응답 미리보기: {preview}...")
+        
+        return "\n".join(analysis_parts)
     
     def _retry_with_increased_tokens(self, messages):
         """Retry with increased max_tokens if response was empty."""

@@ -8,7 +8,8 @@ from src.common.logger import get_logger
 
 # Fallback LLM models in order of preference
 LLM_FALLBACK_MODELS = [
-    "gpt-4",  # Try GPT-4
+    "gpt-5-mini",  # Try GPT-5 mini
+    "gpt-4",  # Fallback to GPT-4
     "gpt-3.5-turbo-16k",  # Alternative GPT-3.5 variant
 ]
 

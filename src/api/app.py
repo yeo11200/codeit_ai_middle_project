@@ -117,6 +117,9 @@ class ProposalResponse(BaseModel):
     query: Optional[str] = None
     doc_id: Optional[str] = None
     total_chunks_used: int
+    response_length: Optional[int] = None
+    model_used: Optional[str] = None
+    analysis: Optional[str] = None
 
 
 # Startup event
@@ -329,12 +332,34 @@ async def generate_proposal(request: ProposalRequest):
             company_info=request.company_info
         )
         
+        # Extract analysis if present
+        proposal_text = result["proposal"]
+        analysis = None
+        if "---\n[응답 분석]" in proposal_text:
+            parts = proposal_text.split("---\n[응답 분석]\n")
+            if len(parts) > 1:
+                analysis_part = parts[1].split("\n---")[0]
+                analysis = analysis_part.strip()
+                # Remove analysis from proposal for cleaner output
+                proposal_text = parts[0].strip()
+        
+        # Get model info
+        model_used = None
+        try:
+            if generation_agent.proposal_generator.llm:
+                model_used = generation_agent.proposal_generator.llm.model_name if hasattr(generation_agent.proposal_generator.llm, 'model_name') else str(generation_agent.proposal_generator.llm.model)
+        except:
+            pass
+        
         return ProposalResponse(
-            proposal=result["proposal"],
+            proposal=proposal_text,
             sources=result["sources"],
             query=result.get("query"),
             doc_id=result.get("doc_id"),
-            total_chunks_used=result.get("total_chunks_used", 0)
+            total_chunks_used=result.get("total_chunks_used", 0),
+            response_length=len(proposal_text),
+            model_used=model_used,
+            analysis=analysis
         )
     except Exception as e:
         logger.error(f"Proposal generation failed: {e}", exc_info=True)

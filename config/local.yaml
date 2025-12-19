@@ -57,7 +57,7 @@ retrieval:
 generation:
   llm:
     provider: openai
-    model: gpt-5-nano # Falls back to gpt-4, gpt-3.5-turbo-16k if not available
+    model: gpt-5-nano # Falls back to gpt-5-mini, gpt-4 if not available
     temperature: 0.2
     max_tokens: 4000 # Increased for proposals
   rag:
