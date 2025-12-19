@@ -76,6 +76,13 @@ eval:
   use_llm_eval: false
   performance_test_queries: 100
 
+# EDA Agent settings
+eda:
+  metadata_csv: data/data_list.csv
+  preprocessed_dir: data/preprocessed
+  chunks_jsonl: data/features/chunks.jsonl
+  output_dir: data/eda/reports
+
 # Logging settings
 logging:
   level: INFO

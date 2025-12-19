@@ -34,3 +34,7 @@ python-dotenv
 fastapi
 uvicorn[standard]
 pydantic
+
+# EDA
+matplotlib
+seaborn
