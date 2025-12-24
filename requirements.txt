@@ -1,18 +1,28 @@
-langchain 
-langchain-community 
-langchain-text-splitters 
+# --- 핵심 프레임워크 ---
+langchain
+langchain-community
+langchain-core
+langchain-text-splitters
 langchain-openai
-pandas 
-pypdf 
-chromadb 
+langchain-chroma
+
+# --- 벡터 DB & 검색 ---
+chromadb
+rank_bm25
+flashrank
+
+# --- 데이터 처리 ---
+pandas
+pypdf
 rapidfuzz
 olefile
+python-dotenv
+pyyaml
 
-pdf2image 
-pillow 
-opencv-python 
-pytesseract
+# --- 웹/앱 인터페이스 ---
+streamlit
+pysqlite3-binary
 
-qdrant-client
-langchain-qdrant
-rank-bm25
+# --- 기타 필수 유틸 ---
+tqdm
+numpy<2.0
