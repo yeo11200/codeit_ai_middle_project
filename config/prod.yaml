@@ -1,0 +1,24 @@
+project_name: "bid_mate_rag"
+version: "0.1.0"
+
+paths:
+  data: "/app/data"
+  raw_data: "/app/data/raw"
+  preprocessed_data: "/app/data/preprocessed"
+  vector_db: "/app/data/index"
+
+model:
+  llm_name: "gpt-4o"
+  embedding_name: "text-embedding-3-small"
+
+vector_db:
+  type: "qdrant"
+  url: "http://qdrant:6333"
+  collection_name: "rfp_collection"
+
+chunking:
+  chunk_size: 1000
+  chunk_overlap: 200
+
+retrieval:
+  top_k: 5

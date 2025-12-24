@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+tests/
+
+# Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Environment Variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# Data & Models
+data/eval
+data/features
+data/files
+data/predictions
+data/preprocessed
+data/raw
+!data/eval_results.json # 평가 결과는 공유하고 싶다면 유지, 아니면 이 줄도 삭제 가능
+!data/metadata.json
+data/index/
+!data/test_set.json
+
+
+# Mac
+.DS_Store
+
+# Node.js (Web)
+web/node_modules/
+web/.next/
+web/out/
+web/build/
+web/.env.local
+web/.env.development.local
+web/.env.test.local
+web/.env.production.local
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
+
+debug_retrieval.py
+debug_search_keyword.py

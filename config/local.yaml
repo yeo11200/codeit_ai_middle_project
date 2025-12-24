@@ -1,0 +1,24 @@
+project_name: "bid_mate_rag"
+version: "0.1.0"
+
+paths:
+  data: "data"
+  raw_data: "data/files"
+  preprocessed_data: "data/preprocessed"
+  vector_db: "data/index"
+
+model:
+  llm_name: "gpt-5-mini"
+  embedding_name: "text-embedding-3-small"
+
+vector_db:
+  type: "chroma" # or "qdrant"
+  collection_name: "rfp_collection"
+  persist_directory: "data/index"
+
+chunking:
+  chunk_size: 1000
+  chunk_overlap: 200
+
+retrieval:
+  top_k: 3
