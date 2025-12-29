@@ -31,12 +31,18 @@ class RAGChain:
         """)
 
     def generate_answer(self, question, selected_docs=None):
-        # 1. 검색 필터 설정
+        # 1. 검색 필터 및 K값 설정 (동적 할당)
+        # 기본은 5개만 가져오지만...
         search_kwargs = {"k": 5}
+        
         if selected_docs:
-             search_kwargs["filter"] = {"source": {"$in": selected_docs}}
+             # [핵심 수정] 사용자가 문서를 '콕 집었을 때'는 경로를 맞춰주고
+             # 검색 개수(k)를 30개까지 확 늘려서 앞/뒤 내용을 다 긁어오게 합니다.
+             full_paths = [f"./data/01-raw/{doc}" for doc in selected_docs]
+             search_kwargs["filter"] = {"source": {"$in": full_paths}}
+             search_kwargs["k"] = 30  # <--- 문서를 지정했으면 30페이지 정도는 읽어봐야 정확함!
 
-        # 2. 동적 검색기 생성
+        # [cite_start]2. 동적 검색기 생성 [cite: 25]
         retriever = self.vector_store_wrapper.vector_store.as_retriever(
             search_kwargs=search_kwargs
         )
@@ -45,8 +51,8 @@ class RAGChain:
         docs = retriever.invoke(question)
         
         def format_docs(documents):
+            # 뒤에 붙어있던 # 제거
             return "\n\n".join([d.page_content for d in documents])
-
         chain = self.prompt | self.llm | StrOutputParser()
         
         answer = chain.invoke({

@@ -5,8 +5,8 @@ from langchain_openai import OpenAIEmbeddings
 
 class VectorStoreWrapper:
     def __init__(self, config):
-        # 1. DB 경로 고정 (진단 결과 반영)
-        self.persist_directory = "./data/index"
+        # 1. DB 경로 고정 (main.py와 똑같이 맞춤)
+        self.persist_directory = "./rfp_database"
         
         # 2. [핵심] 방 이름(Collection) 자동 찾기
         # 설정 파일이 없으니, 직접 DB를 뒤져서 존재하는 방 이름을 찾아냅니다.
