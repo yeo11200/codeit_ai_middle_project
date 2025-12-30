@@ -1,0 +1,79 @@
+📂 1. 모듈 파일 구조
+src/agent/ 폴더 내에 다음 4개 파일이 핵심 두뇌 역할을 합니다.
+
+__init__.py: 패키지 인식 및 외부 호출 자동화
+
+state.py: 에이전트의 '단기 기억' (질문, 문서, 판단 결과 등을 공유하는 주머니)
+
+nodes.py: 실제 작업 단위 (HyDE 생성, 고정밀 검색, 결과 검증, 답변 생성)
+
+graph.py: 전체 프로세스 설계도 (노드 간의 연결 및 조건부 로직 정의)
+
+💡 2. 기술적 포인트: 왜 '에이전트'인가요?
+1) 답변의 무결성 확보 (Grounding)
+기존: 검색 결과가 질문과 상관없어도 무조건 답변을 생성하여 환각(Hallucination) 위험이 높음.
+
+에이전트: 'Grader(검증관)' 노드가 개입하여 정보가 부적절하면 답변을 거부하고 질문을 다듬어 재검색을 지시합니다.
+
+2) GCP L4 GPU 성능 극대화
+**NVIDIA L4(VRAM 24GB)**라는 고사양 하드웨어를 단순히 챗봇 하나에 쓰는 것은 아쉽다.
+
+본 구조는 **HyDE(가상 답변 생성)**와 고성능 리랭킹을 병렬로 처리하여 로컬 모델(Ollama)의 한계를 뛰어넘는 정확도를 뽑아냅니다.
+
+3) 유연한 확장성 (Modularity)
+모든 기능이 '노드(Node)' 단위로 모듈화되어 있습니다. 나중에 "웹 검색"이나 "보고서 자동 양식" 기능을 추가할 때 기존 로직 수정 없이 새 블록만 추가하면 됩니다.
+
+🧠 3. 에이전트 작동 원리 및 연동 구조
+우리 에이전트는 '상태 머신(State Machine)' 원리로 움직이며, 각 단계의 결과를 보고 다음 행동을 결정합니다.
+
+🎨 연동 프로세스
+LangGraph (Brain): 질문을 분석하고(HyDE), 최적의 검색 전략을 결정합니다.
+
+RAGChain (Engine): 지시받은 대로 벡터 DB(rfp_database)에서 문서를 긁어옵니다.
+
+Grader (Local LLM): L4 GPU 가속을 통해 "이 문서가 질문에 적합한가?"를 정밀 검토합니다.
+
+Final Answer: 검증이 완료된 정제된 정보만을 사용하여 최종 답변을 생성합니다.
+
+
+
+🛠 4. 코드 연동 가이드 (app.py 수정)
+기존 기능을 부품으로 활용하므로 최소한의 수정으로 이식이 가능합니다.
+
+① 시스템 로딩부 수정
+Python
+
+from src.agent.graph import build_rag_graph
+
+@st.cache_resource
+def load_system():
+    vector_store = VectorStoreWrapper(config)
+    vector_store.initialize()
+    rag_chain = RAGChain(config, vector_store)
+    
+    # [추가] 랭그래프 에이전트 엔진 빌드
+    agent_app = build_rag_graph(rag_chain) 
+    return vector_store, rag_chain, agent_app
+
+vector_store_wrapper, rag_chain, agent_app = load_system()
+
+
+② 질문 처리부 수정
+Python
+
+# 기존 rag_chain.generate_answer 호출을 agent_app.invoke로 대체
+with st.spinner("🤖 에이전트가 지능형 분석을 수행 중입니다..."):
+    result = agent_app.invoke({
+        "question": prompt, 
+        "selected_docs": selected_docs,
+        "retry_count": 0
+    })
+    
+    answer = result["answer"]
+    docs = result["documents"]
+
+
+✅ 5. 성공적인 도입 확인법
+터미널 로그: [STEP 0] HyDE → [STEP 1] Retrieve → [STEP 2] Grade 순으로 로그가 찍히는지 확인하세요.
+
+자가 교정 테스트: 질문과 관련 없는 문서를 선택했을 때, 에이전트가 "부적합" 판정을 내리고 다시 검색 루프를 도는지 확인하세요.
