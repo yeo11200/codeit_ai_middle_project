@@ -4,11 +4,13 @@ import re
 import olefile
 import zlib
 import struct
+import torch
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline
 from dotenv import load_dotenv
 
 # --- [1. 설정] ---
@@ -105,10 +107,19 @@ if not docs:
 print(f"\n총 {len(docs)}개 문서 로드 완료. 벡터 DB 생성 시작...")
 
 # 청킹 & 저장
-splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
+##splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
 chunks = splitter.split_documents(docs)
 
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+#embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+##embeddings = HuggingFaceEmbeddings(model_name="jhgan/ko-sroberta-multitask")
+embeddings = HuggingFaceEmbeddings(
+    model_name="BAAI/bge-m3",
+    ##model_name="jhgan/ko-sroberta-multitask",
+    model_kwargs={'device': 'cuda' if torch.cuda.is_available() else 'cpu'},
+    encode_kwargs={'normalize_embeddings': True}
+)
+
 # 저장
 vectordb = Chroma.from_documents(chunks, embeddings, persist_directory=DB_PATH)
 

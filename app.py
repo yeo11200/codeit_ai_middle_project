@@ -60,7 +60,7 @@ with st.sidebar:
     st.caption("Developed by Joonyoung_Dev")
 
 # --- 메인 화면 ---
-st.title("🤖 AI RFP 분석기 (Final Ver.)")
+st.title("🤖 AI RFP 분석기 (Final Ver.) 시나리오A")
 
 if len(all_docs) > 0:
     st.caption(f"🚀 현재 {len(all_docs)}개의 RFP 문서가 연동되어 있습니다.")

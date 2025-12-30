@@ -1,7 +1,9 @@
 import os
+import torch
 import chromadb # DB를 직접 들여다보기 위해 추가
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 class VectorStoreWrapper:
     def __init__(self, config):
@@ -25,10 +27,9 @@ class VectorStoreWrapper:
             print(f"⚠️ 방 이름 자동 감지 실패 (기본값 사용): {e}")
 
         # 3. 임베딩 설정
-        embeddings_cfg = config.get('embeddings', {})
-        model_name = embeddings_cfg.get('model', 'text-embedding-3-small')
-        self.embeddings = OpenAIEmbeddings(model=model_name)
-        self.vector_store = None
+        # self.embedding, self.vector_store = get_OpenAIEmbeddings()
+        self.embeddings, self.vector_store = get_HuggingFaceEmbeddings()
+        
 
     def initialize(self):
         if os.path.exists(self.persist_directory):
@@ -65,3 +66,33 @@ class VectorStoreWrapper:
         except Exception as e:
             print(f"⚠️ 문서 목록 조회 실패: {e}")
             return []
+
+def get_OpenAIEmbeddings():
+    # 3. 임베딩 설정(시나리오 B : 클라우드 API 기반)
+    embeddings_cfg = config.get('embeddings', {})
+    model_name = embeddings_cfg.get('model', 'text-embedding-3-small')
+    embeddings = OpenAIEmbeddings(model=model_name)
+    vector_store = None
+
+    return embeddings, vector_store
+
+
+def get_HuggingFaceEmbeddings():
+    #print(f"get_HuggingFaceEmbeddings start")
+
+    # 시나리오 A: 로컬(GCP) GPU를 사용하는 HuggingFace 임베딩 모델
+    model_name = "BAAI/bge-m3"
+    encode_kwargs = {'normalize_embeddings': True}
+    
+    embeddings = HuggingFaceEmbeddings(
+        model_name=model_name,
+        model_kwargs={'device': 'cuda' if torch.cuda.is_available() else 'cpu'}, # GCP GPU 활용
+        encode_kwargs=encode_kwargs
+    )
+    vector_store = None
+
+    #print(f"get_HuggingFaceEmbeddings end")
+
+    return embeddings, vector_store
+
+# 이후 vector_store 생성 함수에서 이 embeddings 객체를 사용합니다.            
