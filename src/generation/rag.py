@@ -16,7 +16,21 @@ class RAGChain:
         )
 
         # 2. LLM 설정
-        self.llm = ChatOllama(model=self.model_name, temperature=0)
+        self.llm = ChatOllama(
+            model=self.model_name,
+            
+            # [청수님 설정] temperature=0.1 (창의성 억제, 사실 기반 답변 유도)
+            temperature=0.1,
+            
+            # [청수님 설정] top_p=0.95 (상위 95% 확률 내에서 단어 선택)
+            top_p=0.95,
+            
+            # [청수님 설정] repetition_penalty=1.1 -> Ollama에서는 'repeat_penalty'
+            repeat_penalty=1.1,
+            
+            # [청수님 설정] max_new_tokens=512 -> Ollama에서는 'num_predict'
+            num_predict=512
+        )
 
         # 3. 프롬프트 템플릿
         self.prompt = ChatPromptTemplate.from_template("""

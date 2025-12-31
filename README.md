@@ -74,3 +74,12 @@ make app
 **Q. "처리할 문서가 없습니다"라고 뜹니다.**
 
 > **A.** 데이터 연결이 끊어진 경우입니다. `make clean` 후 `make run`을 다시 실행하여 연결을 복구하세요.
+
+---
+
+## 🔗 Reference
+
+> 📝 [1팀 협업 일지 (Notion) 보러 가기](https://www.notion.so/1-2940b6abc93c81bd96fcd00db6773eb4)
+
+## 보고서 pdf 파일
+> https://docs.google.com/presentation/d/1w_ySfFd2b5XENYjtTGW8Jmd7ALoQ6TKXKWjWXEXG77k/edit?slide=id.p1#slide=id.p1
